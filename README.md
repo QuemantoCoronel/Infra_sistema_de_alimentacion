@@ -1,7 +1,7 @@
 # NutriPerú — Sistema Inteligente de Recomendación Alimenticia
 
-> Proyecto académico — Inteligencia Artificial: Principios y Técnicas (ISIA-108)  
-> Universidad Privada Antenor Orrego · Semestre 2026-10
+> Proyecto académico — Infraestructura como Código  
+> Universidad Privada Antenor Orrego · Semestre 2026-20
 
 Sistema de recomendación nutricional personalizada que genera planes alimenticios diarios completos (desayuno, almuerzo, cena, snack) con ingredientes peruanos. Integra un **Sistema Experto basado en reglas**, **optimización lineal entera (MILP)** y **K-Means clustering**. Los nombres de los platillos generados se enriquecen con un LLM (Gemini) como complemento.
 
@@ -171,12 +171,10 @@ El notebook `notebooks/demo.ipynb` contiene el desarrollo completo del sistema:
 
 | Integrante | Código |
 |------------|--------|
-| Ángeles Pérez, Jhonny Luis | — |
-| Castañeda Astudillo, André | — |
-| Rodríguez Bocanegra, Cristian | — |
-| Solano Pérez, Gabriel Alejandro | — |
-| Villar Vigo, Robert Visitación Junior | — |
+| Aguilar Zavaleta, Karina Jacqueline | — |
+| Angeles Pérez, Jhonny Luis | — |
+| Ballesteros Reyes, Renato | — |
+| Muñoz Wong, Lucas Leonardo | — |
 
-**Docente:** Hernán Sagastegui Chigne  
-**Asignatura:** Inteligencia Artificial: Principios y Técnicas  
-**Programa:** Ingeniería de Sistemas e Inteligencia Artificial — UPAO 2026-10
+**Asignatura:** Infraestructura como Código  
+**Programa:** Ingeniería de Sistemas e Inteligencia Artificial — UPAO 2026-20
