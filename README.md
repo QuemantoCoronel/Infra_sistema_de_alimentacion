@@ -7,12 +7,10 @@ Sistema de recomendación nutricional personalizada que genera planes alimentici
 
 ---
 
-## Demo en producción
+## Despliegue en la nube
 
-**URL pública:** [nutriperu.onrender.com](https://nutriperu.onrender.com)  
-**Panel académico:** [nutriperu.onrender.com/admin](https://nutriperu.onrender.com/admin)
-
-> Usuario de acceso al panel: `admin`
+> Infraestructura preparada para despliegue en **Amazon Web Services (AWS)**.  
+> Panel académico accesible en `/admin` (Usuario de acceso: `admin`).
 
 ---
 
@@ -93,7 +91,7 @@ Desviacíon calórica promedio del **1.7%** — muy por debajo del umbral del 10
 | Clustering | scikit-learn (KMeans, PCA, StandardScaler) |
 | Frontend | HTML + CSS + JavaScript vanilla |
 | LLM | Google Gemini + fallback local |
-| Despliegue | Render.com |
+| Despliegue | AWS |
 
 ---
 
@@ -121,7 +119,6 @@ Infra_sistema_de_alimentacion/
 │       ├── plan.html                # Plan del día + auditoría
 │       └── admin.html               # Panel académico (stats, K-Means, VV&E)
 ├── requirements.txt                 # Dependencias del notebook
-├── render.yaml                      # Configuración de despliegue
 └── README.md
 ```
 

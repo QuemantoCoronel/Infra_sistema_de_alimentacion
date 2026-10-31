@@ -4,7 +4,7 @@ from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./nutriperu.db")
 
-# Render usa "postgres://" pero SQLAlchemy requiere "postgresql://"
+# Compatibilidad: PostgreSQL suele suministrarse como "postgres://" pero SQLAlchemy requiere "postgresql://"
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
