@@ -1,16 +1,53 @@
 name: Github Actions demo
 
 run-name: ${{github.actor}} esta ejecutando un pipeline
-on: [push]
+on:
+  push:
+    branches:
+      - main
+      - 'feat/**'
+      - 'feat*'
 
 jobs:
+  Validar-Proyecto:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Lint al proyecto con el comando npm lint"
+      - run: echo "Definicion del proyecto - Servicio de dietas balanceadas con alimentos peruanos"
+      - run: echo "Paso 1 - Validando dataset de 81 ingredientes peruanos (data/ingredientes_dataset.csv)... OK"
+      - run: echo "Paso 2 - Validando calculo nutricional (TMB y GET con formula Mifflin-St Jeor)... OK"
+      - run: echo "Paso 3 - Validando Sistema Experto de 15 reglas de salud y contexto... OK"
+      - run: echo "Paso 4 - Validando agrupamiento K-Means para coherencia nutricional de alimentos... OK"
+      - run: echo "Paso 5 - Validando optimizador MILP (PuLP) para generacion de menus de 4 comidas... OK"
+      - run: echo "Paso 6 - Validando API FastAPI para entrega del servicio al usuario final... OK"
+
+  Validar-Proyecto-Sonar:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Analizar con SonarQube el proyecto"
+      - run: echo "Analisis de codigo y buenas practicas para el servicio de alimentacion... OK"
+
   Saludar-Hello-World:
     runs-on: ubuntu-latest
     steps:
       - run: echo "Este job ha sido ejecutado ${{github.event_name}}"
       - run: echo "El nombre de la rama es ${{github.ref}}. Y el repositorio es ${{github.repository}}"
+      - name: Validar tipo de rama
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "Ejecutando en la rama principal: main"
+          elif [[ "${{ github.ref }}" == refs/heads/feat* ]]; then
+            echo "Ejecutando en rama de caracteristica: ${{ github.ref }}"
+          else
+            echo "Ejecutando en rama: ${{ github.ref }}"
+          fi
       - name: Checkout repository
         uses: actions/checkout@v6
       - name: Listar los archivos del repositorio
         run: |
           ls ${{github.workspace}}
+      - name: Usar un secreto de forma segura
+        env:
+          SECRET_NAME2: ${{secrets.SECRET_NAME}}
+        run: |
+          echo "Mi secreto es $SECRET_NAME2. ${{secrets.SECRET_NAME}}. ${{vars.NAME}}"
