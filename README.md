@@ -100,7 +100,7 @@ Desviacíon calórica promedio del **1.7%** — muy por debajo del umbral del 10
 ## Estructura del proyecto
 
 ```
-IA-Despliegue/
+Infra_sistema_de_alimentacion/
 ├── data/
 │   └── ingredientes_dataset.csv     # 81 ingredientes curados
 ├── docs/
@@ -131,8 +131,8 @@ IA-Despliegue/
 
 ```bash
 # 1. Clonar el repositorio
-git clone https://github.com/gsolanop1-ai/IA-Despliegue.git
-cd IA-Despliegue
+git clone https://github.com/QuemantoCoronel/Infra_sistema_de_alimentacion.git
+cd Infra_sistema_de_alimentacion
 
 # 2. Instalar dependencias
 pip install -r webapp/requirements.txt
