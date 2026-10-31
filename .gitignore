@@ -28,3 +28,11 @@ output/
 # Web app
 *.db
 cells_export.txt
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+tfplan
+terraform/build/
+terraform/backend.hcl
