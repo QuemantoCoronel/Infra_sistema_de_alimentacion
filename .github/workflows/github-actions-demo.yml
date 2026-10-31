@@ -12,7 +12,7 @@ jobs:
   Validar-Proyecto:
     runs-on: ubuntu-latest
     steps:
-      - run: echo "Lint al proyecto con el comando npm lint"
+      - run: echo "Lint al proyecto con el comando flake8"
       - run: echo "Definicion del proyecto - Servicio de dietas balanceadas con alimentos peruanos"
       - run: echo "Paso 1 - Validando dataset de 81 ingredientes peruanos (data/ingredientes_dataset.csv)... OK"
       - run: echo "Paso 2 - Validando calculo nutricional (TMB y GET con formula Mifflin-St Jeor)... OK"
