@@ -1,0 +1,7 @@
+# Copiar como backend.hcl (no se sube al repositorio) y reemplazar el bucket.
+bucket               = "NOMBRE-DE-TU-BUCKET-DE-ESTADO"
+key                  = "lab09/dev/terraform.tfstate"
+region               = "us-east-2"
+encrypt              = true
+use_lockfile         = true
+workspace_key_prefix = "lab09/dev/env"
