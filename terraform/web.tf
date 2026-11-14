@@ -12,6 +12,14 @@ resource "aws_s3_bucket_public_access_block" "web" {
   restrict_public_buckets = true
 }
 
+# Versionado: si se sube una versión rota de la web se puede volver a la anterior
+resource "aws_s3_bucket_versioning" "web" {
+  bucket = aws_s3_bucket.web.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
 # Origin Access Control (OAC) para que solo CloudFront pueda leer del bucket S3
 resource "aws_cloudfront_origin_access_control" "web" {
   name                              = "${local.nombre}-web-oac"
