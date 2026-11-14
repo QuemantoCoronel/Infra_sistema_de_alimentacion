@@ -22,7 +22,7 @@ data "archive_file" "lambdas" {
 resource "aws_cloudwatch_log_group" "lambda" {
   for_each          = local.funciones
   name              = "/aws/lambda/${local.nombre}-${each.key}"
-  retention_in_days = 7
+  retention_in_days = 365
 }
 
 resource "aws_lambda_function" "funcion" {

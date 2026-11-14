@@ -15,7 +15,7 @@ resource "aws_cloudwatch_log_group" "lambda_secundaria" {
   provider          = aws.secundaria
   for_each          = local.funciones_secundarias
   name              = "/aws/lambda/${local.nombre}-${each.key}"
-  retention_in_days = 7
+  retention_in_days = 365
 }
 
 resource "aws_lambda_function" "funcion_secundaria" {
