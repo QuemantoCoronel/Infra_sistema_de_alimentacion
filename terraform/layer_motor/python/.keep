@@ -1,0 +1,2 @@
+# Directorio donde GitHub Actions instala PuLP y scikit-learn para el Lambda Layer del worker.
+
