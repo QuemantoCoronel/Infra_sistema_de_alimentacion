@@ -27,6 +27,7 @@ jobs:
         working-directory: terraform
     env:
       TF_VAR_aws_region: "sa-east-1"
+      TF_VAR_correo_remitente: ${{ vars.SES_EMAIL || 'quemantocoronelgamer@gmail.com' }}
       TF_IN_AUTOMATION: "true"
     steps:
       - name: Checkout del repositorio

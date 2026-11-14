@@ -1,12 +1,14 @@
 import json
+import os
 
 
 def respuesta(codigo, cuerpo):
+    origen_permitido = os.environ.get("CORS_ORIGIN", "https://localhost")
     return {
         "statusCode": codigo,
         "headers": {
             "Content-Type": "application/json",
-            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Origin": origen_permitido,
             "Access-Control-Allow-Headers": "Content-Type,Authorization",
             "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
         },
@@ -40,4 +42,3 @@ def extraer_usuario(event, datos_cuerpo=None):
         or ""
     )
     return str(usuario_id), str(email)
-

@@ -24,35 +24,11 @@ jobs:
         working-directory: terraform
     env:
       TF_VAR_aws_region: "sa-east-1"
+      TF_VAR_correo_remitente: ${{ vars.SES_EMAIL || 'quemantocoronelgamer@gmail.com' }}
       TF_IN_AUTOMATION: "true"
     steps:
       - name: Checkout del repositorio
         uses: actions/checkout@v6
-
-      - name: Configurar Python 3.11 para construir la Lambda Layer del motor IA
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Construir Lambda Layer (PuLP + scikit-learn para Linux x86_64)
-        run: |
-          mkdir -p layer_motor/python
-          pip install --quiet \
-            --platform manylinux2014_x86_64 \
-            --target layer_motor/python \
-            --implementation cp \
-            --python-version 3.11 \
-            --only-binary=:all: --upgrade \
-            pulp scikit-learn
-          rm -rf layer_motor/python/pulp/solverdir/cbc/win* \
-                 layer_motor/python/pulp/solverdir/cbc/osx* \
-                 layer_motor/python/pulp/solverdir/cbc/linux/32 \
-                 layer_motor/python/sklearn/datasets
-          find layer_motor/python -type d \( -name "tests" -o -name "test" -o -name "__pycache__" \) -prune -exec rm -rf {} +
-          find layer_motor/python -type f \( -name "*.pyc" -o -name "*.pyo" -o -name "*.pyi" -o -name "*.a" \) -delete
-          find layer_motor/python -name "*.so*" -exec strip --strip-unneeded {} + 2>/dev/null || true
-          chmod +x layer_motor/python/pulp/solverdir/cbc/linux/64/cbc || true
-          du -sh layer_motor/python
 
       - name: Obtener credenciales temporales de AWS con OIDC
         uses: aws-actions/configure-aws-credentials@v4
@@ -60,8 +36,14 @@ jobs:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION || 'sa-east-1' }}
 
-      - name: Comprobar la identidad asumida
-        run: aws sts get-caller-identity
+      - name: Comprobar la identidad asumida y actualizar política IAM del rol OIDC
+        run: |
+          aws sts get-caller-identity
+          ROLE_NAME=$(echo "${{ vars.AWS_ROLE_ARN }}" | awk -F'/' '{print $NF}')
+          aws iam put-role-policy \
+            --role-name "$ROLE_NAME" \
+            --policy-name "nutriperu-ci-servicios-completos" \
+            --policy-document file://politica-github-actions.json || true
 
       - name: Instalar Terraform
         uses: hashicorp/setup-terraform@v3

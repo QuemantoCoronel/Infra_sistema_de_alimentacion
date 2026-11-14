@@ -1,0 +1,42 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "PermisosDespliegueTerraformNutriPeru",
+      "Effect": "Allow",
+      "Action": [
+        "acm:*",
+        "apigateway:*",
+        "autoscaling:*",
+        "backup:*",
+        "backup-storage:*",
+        "cloudfront:*",
+        "cloudtrail:*",
+        "cloudwatch:*",
+        "cognito-idp:*",
+        "dynamodb:*",
+        "ec2:*",
+        "elasticbeanstalk:*",
+        "elasticloadbalancing:*",
+        "events:*",
+        "iam:*",
+        "kms:CreateGrant",
+        "kms:DescribeKey",
+        "kms:ListAliases",
+        "lambda:*",
+        "logs:*",
+        "pipes:*",
+        "route53:*",
+        "s3:*",
+        "secretsmanager:*",
+        "ses:*",
+        "sns:*",
+        "sqs:*",
+        "sts:GetCallerIdentity",
+        "wafv2:*"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+

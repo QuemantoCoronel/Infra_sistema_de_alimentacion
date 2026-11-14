@@ -1,11 +1,12 @@
-# Despliegue del backend FastAPI y Panel Académico (/admin) en AWS Elastic Beanstalk
+# Worker en AWS Elastic Beanstalk: ejecuta el motor real (PuLP MILP + scikit-learn K-Means + 15 reglas)
+# consumiendo mensajes de la cola SQS y guardando el plan generado en DynamoDB.
 
 data "aws_elastic_beanstalk_solution_stack" "python" {
   most_recent = true
   name_regex  = "^64bit Amazon Linux 2023 (.*) running Python 3.11$"
 }
 
-# Rol IAM para las instancias EC2 de Elastic Beanstalk
+# Rol IAM para las instancias EC2 del Worker en Elastic Beanstalk
 data "aws_iam_policy_document" "beanstalk_ec2_assume" {
   statement {
     actions = ["sts:AssumeRole"]
@@ -29,6 +30,47 @@ resource "aws_iam_role_policy_attachment" "beanstalk_web_tier" {
 resource "aws_iam_role_policy_attachment" "beanstalk_worker_tier" {
   role       = aws_iam_role.beanstalk_ec2.name
   policy_arn = "arn:aws:iam::aws:policy/AWSElasticBeanstalkWorkerTier"
+}
+
+data "aws_iam_policy_document" "beanstalk_worker_permisos" {
+  statement {
+    sid = "ConsumirColaSolicitudesSQS"
+    actions = [
+      "sqs:ReceiveMessage",
+      "sqs:DeleteMessage",
+      "sqs:GetQueueAttributes",
+      "sqs:ChangeMessageVisibility",
+    ]
+    resources = [
+      aws_sqs_queue.solicitudes.arn,
+      aws_sqs_queue.solicitudes_dlq.arn,
+    ]
+  }
+
+  statement {
+    sid = "ActualizarPlanesEnDynamoDB"
+    actions = [
+      "dynamodb:GetItem",
+      "dynamodb:PutItem",
+      "dynamodb:UpdateItem",
+    ]
+    resources = [
+      aws_dynamodb_table.planes.arn,
+      aws_dynamodb_table.perfiles.arn,
+    ]
+  }
+
+  statement {
+    sid       = "LeerSecretosWorker"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [aws_secretsmanager_secret.app.arn]
+  }
+}
+
+resource "aws_iam_role_policy" "beanstalk_worker_permisos" {
+  name   = "${local.nombre}-beanstalk-worker-permisos"
+  role   = aws_iam_role.beanstalk_ec2.id
+  policy = data.aws_iam_policy_document.beanstalk_worker_permisos.json
 }
 
 resource "aws_iam_instance_profile" "beanstalk_ec2" {
@@ -64,8 +106,8 @@ resource "aws_iam_role_policy_attachment" "beanstalk_managed_updates" {
 
 # Aplicación en Elastic Beanstalk
 resource "aws_elastic_beanstalk_application" "nutriperu" {
-  name        = "${local.nombre}-eb-app"
-  description = "Aplicacion web y panel academico NutriPeru (FastAPI + PuLP + K-Means)"
+  name        = "${local.nombre}-worker-eb"
+  description = "Worker de IA NutriPeru (PuLP MILP + K-Means + Sistema Experto)"
 
   appversion_lifecycle {
     service_role          = aws_iam_role.beanstalk_service.arn
@@ -74,7 +116,7 @@ resource "aws_elastic_beanstalk_application" "nutriperu" {
   }
 }
 
-# Empaquetado del código de webapp/ para la versión de Elastic Beanstalk
+# Empaquetado del código de webapp/ y data/ingredientes_dataset.csv para Elastic Beanstalk
 data "archive_file" "beanstalk_app" {
   type        = "zip"
   output_path = "${path.module}/build/beanstalk_app.zip"
@@ -101,15 +143,15 @@ resource "aws_s3_object" "beanstalk_zip" {
 resource "aws_elastic_beanstalk_application_version" "actual" {
   name        = "${local.nombre}-v-${substr(data.archive_file.beanstalk_app.output_md5, 0, 8)}"
   application = aws_elastic_beanstalk_application.nutriperu.name
-  description = "Version empaquetada automaticamente por Terraform"
+  description = "Version del Worker (PuLP + K-Means) empaquetada por Terraform"
   bucket      = aws_s3_bucket.web.id
   key         = aws_s3_object.beanstalk_zip.key
 }
 
-# Entorno de ejecución en Elastic Beanstalk
+# Entorno en Elastic Beanstalk que consume la cola SQS y ejecuta el motor PuLP + K-Means
 resource "aws_elastic_beanstalk_environment" "env" {
   count               = var.habilitar_beanstalk ? 1 : 0
-  name                = "${local.nombre}-eb-env"
+  name                = "${local.nombre}-worker-env"
   application         = aws_elastic_beanstalk_application.nutriperu.name
   solution_stack_name = data.aws_elastic_beanstalk_solution_stack.python.name
   version_label       = aws_elastic_beanstalk_application_version.actual.name
@@ -189,8 +231,19 @@ resource "aws_elastic_beanstalk_environment" "env" {
 
   setting {
     namespace = "aws:elasticbeanstalk:application:environment"
+    name      = "COLA_URL"
+    value     = aws_sqs_queue.solicitudes.url
+  }
+
+  setting {
+    namespace = "aws:elasticbeanstalk:application:environment"
+    name      = "SECRETO_ARN"
+    value     = aws_secretsmanager_secret.app.arn
+  }
+
+  setting {
+    namespace = "aws:elasticbeanstalk:application:environment"
     name      = "AWS_DEFAULT_REGION"
     value     = var.aws_region
   }
 }
-

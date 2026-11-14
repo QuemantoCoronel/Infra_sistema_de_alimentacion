@@ -1,6 +1,7 @@
 # Tópico SNS para centralizar las alertas operativas de la infraestructura
 resource "aws_sns_topic" "alarmas" {
-  name = "${local.nombre}-alarmas"
+  name              = "${local.nombre}-alarmas"
+  kms_master_key_id = "alias/aws/sns"
 }
 
 resource "aws_sns_topic_subscription" "correo_alertas" {
@@ -13,7 +14,7 @@ resource "aws_sns_topic_subscription" "correo_alertas" {
 # Alarma 1: Mensajes acumulados en la cola de errores (DLQ)
 resource "aws_cloudwatch_metric_alarm" "dlq_mensajes" {
   alarm_name          = "${local.nombre}-dlq-mensajes-visibles"
-  alarm_description   = "Alerta cuando una solicitud falla 3 veces en el worker y cae en la DLQ"
+  alarm_description   = "Alerta cuando una solicitud supera el maximo de intentos en el worker y cae en la DLQ"
   comparison_operator = "GreaterThanOrEqualToThreshold"
   evaluation_periods  = 1
   metric_name         = "ApproximateNumberOfMessagesVisible"
@@ -31,24 +32,25 @@ resource "aws_cloudwatch_metric_alarm" "dlq_mensajes" {
   ok_actions    = [aws_sns_topic.alarmas.arn]
 }
 
-# Alarma 2: Errores de ejecución en la Lambda Worker (motor PuLP / K-Means)
-resource "aws_cloudwatch_metric_alarm" "worker_errores" {
-  alarm_name          = "${local.nombre}-worker-errores"
-  alarm_description   = "Alerta cuando el worker falla al generar un plan alimenticio"
+# Alarma 2: Retraso en el procesamiento de la cola SQS por parte del Worker en Elastic Beanstalk
+resource "aws_cloudwatch_metric_alarm" "worker_cola_retraso" {
+  alarm_name          = "${local.nombre}-worker-cola-retraso"
+  alarm_description   = "Alerta cuando hay mensajes sin procesar por mas de 10 minutos en la cola del Worker Beanstalk"
   comparison_operator = "GreaterThanOrEqualToThreshold"
   evaluation_periods  = 1
-  metric_name         = "Errors"
-  namespace           = "AWS/Lambda"
+  metric_name         = "ApproximateAgeOfOldestMessage"
+  namespace           = "AWS/SQS"
   period              = 60
-  statistic           = "Sum"
-  threshold           = 1
+  statistic           = "Maximum"
+  threshold           = 600
   treat_missing_data  = "notBreaching"
 
   dimensions = {
-    FunctionName = aws_lambda_function.funcion["worker"].function_name
+    QueueName = aws_sqs_queue.solicitudes.name
   }
 
   alarm_actions = [aws_sns_topic.alarmas.arn]
+  ok_actions    = [aws_sns_topic.alarmas.arn]
 }
 
 # Alarma 3: Errores 5xx en el API Gateway principal
@@ -69,6 +71,7 @@ resource "aws_cloudwatch_metric_alarm" "api_5xx" {
   }
 
   alarm_actions = [aws_sns_topic.alarmas.arn]
+  ok_actions    = [aws_sns_topic.alarmas.arn]
 }
 
 # Alarma 4: Errores en la Lambda de notificaciones por correo (SES)
@@ -89,5 +92,5 @@ resource "aws_cloudwatch_metric_alarm" "correo_errores" {
   }
 
   alarm_actions = [aws_sns_topic.alarmas.arn]
+  ok_actions    = [aws_sns_topic.alarmas.arn]
 }
-

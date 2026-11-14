@@ -11,9 +11,9 @@ variable "aws_region_secundaria" {
 }
 
 variable "habilitar_multiregion" {
-  description = "Habilita DynamoDB Global Tables y la API de respaldo en la región secundaria"
+  description = "Habilita DynamoDB Global Tables y la API de respaldo en la región secundaria (apagado por defecto en dev)"
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "entorno" {
@@ -28,10 +28,28 @@ variable "prefijo" {
   default     = "lab09"
 }
 
+variable "sqs_visibility_timeout" {
+  description = "Tiempo de visibilidad en segundos de la cola SQS de solicitudes (5 minutos según el informe)"
+  type        = number
+  default     = 300
+}
+
+variable "sqs_max_receive_count" {
+  description = "Número máximo de intentos en SQS antes de enviar a la cola de errores DLQ"
+  type        = number
+  default     = 5
+}
+
+variable "waf_rate_limit" {
+  description = "Límite de peticiones por IP cada 5 minutos en AWS WAFv2 (10 000 según el informe)"
+  type        = number
+  default     = 10000
+}
+
 variable "correo_remitente" {
-  description = "Correo verificado en Amazon SES para enviar los planes generados"
+  description = "Correo real para verificar en Amazon SES y enviar los planes generados"
   type        = string
-  default     = "notificaciones@nutriperu.pe"
+  default     = "quemantocoronelgamer@gmail.com"
 }
 
 variable "correo_alertas" {
@@ -41,7 +59,7 @@ variable "correo_alertas" {
 }
 
 variable "dominio" {
-  description = "Dominio personalizado opcional en Route 53 (dejar vacío si no se tiene uno comprado)"
+  description = "Dominio propio opcional en Route 53 (dejar vacío si no se tiene uno registrado)"
   type        = string
   default     = ""
 }
@@ -53,13 +71,13 @@ variable "crear_zona_route53" {
 }
 
 variable "habilitar_beanstalk" {
-  description = "Habilita el despliegue del entorno de AWS Elastic Beanstalk para la aplicacion web y panel academico"
+  description = "Habilita el despliegue del Worker (PuLP + K-Means) en AWS Elastic Beanstalk"
   type        = bool
   default     = true
 }
 
 variable "beanstalk_instance_type" {
-  description = "Tipo de instancia EC2 para el entorno de AWS Elastic Beanstalk"
+  description = "Tipo de instancia EC2 para el Worker en AWS Elastic Beanstalk"
   type        = string
   default     = "t3.micro"
 }

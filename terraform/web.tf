@@ -42,7 +42,8 @@ resource "aws_s3_object" "web" {
   etag         = filemd5("${path.module}/../webapp/static/${each.key}")
 }
 
-# Archivo de configuración inyectado dinámicamente con los endpoints de AWS desplegados
+# Cliente JS inyectado dinámicamente que conecta las páginas HTML con las rutas de API Gateway
+# (GET /salud, GET /perfil, PUT /perfil, POST /planes, GET /planes/{id}, GET /historial, DELETE /datos)
 resource "aws_s3_object" "config_js" {
   bucket       = aws_s3_bucket.web.id
   key          = "config.js"
@@ -56,6 +57,133 @@ resource "aws_s3_object" "config_js" {
       regionPrincipal: "${var.aws_region}",
       regionSecundaria: "${var.aws_region_secundaria}"
     };
+
+    (function() {
+      const origFetch = window.fetch.bind(window);
+      const apiBase = window.NUTRIPERU_CONFIG.apiUrl;
+
+      function authHeaders(extra) {
+        const headers = Object.assign({ "Content-Type": "application/json" }, extra || {});
+        const token = localStorage.getItem("np_jwt");
+        if (token) headers["Authorization"] = "Bearer " + token;
+        return headers;
+      }
+
+      function jsonResponse(status, obj) {
+        return new Response(JSON.stringify(obj), {
+          status: status,
+          headers: { "Content-Type": "application/json" }
+        });
+      }
+
+      window.fetch = async function(input, init) {
+        const url = typeof input === "string" ? input : input.url;
+        const method = ((init && init.method) || "GET").toUpperCase();
+
+        // 1. POST /api/usuario/entrar -> consulta GET /perfil en API Gateway
+        if (url === "/api/usuario/entrar" && method === "POST") {
+          const body = JSON.parse((init && init.body) || "{}");
+          const username = (body.username || "").trim().toLowerCase();
+          const res = await origFetch(apiBase + "/perfil?usuario_id=" + encodeURIComponent(username), {
+            method: "GET",
+            headers: authHeaders()
+          });
+          const tienePerfil = res.status === 200;
+          return jsonResponse(200, { username: username, tiene_perfil: tienePerfil, nuevo: !tienePerfil });
+        }
+
+        // 2. GET/POST /api/usuario/{u}/perfil -> GET /perfil y PUT /perfil en API Gateway
+        const mPerfil = url.match(/^\/api\/usuario\/([^/]+)\/perfil$/);
+        if (mPerfil) {
+          const username = decodeURIComponent(mPerfil[1]);
+          if (method === "GET") {
+            const res = await origFetch(apiBase + "/perfil?usuario_id=" + encodeURIComponent(username), {
+              method: "GET",
+              headers: authHeaders()
+            });
+            if (res.status === 404) {
+              return jsonResponse(200, { username: username, tiene_perfil: false });
+            }
+            const p = await res.json();
+            return jsonResponse(200, {
+              username: username,
+              edad: Number(p.edad),
+              sexo: p.sexo,
+              peso_kg: Number(p.peso),
+              altura_cm: Number(p.talla),
+              nivel_actividad: p.actividad,
+              objetivo: p.objetivo,
+              tiene_perfil: true
+            });
+          }
+          if (method === "POST" || method === "PUT") {
+            const b = JSON.parse((init && init.body) || "{}");
+            const res = await origFetch(apiBase + "/perfil", {
+              method: "PUT",
+              headers: authHeaders(),
+              body: JSON.stringify({
+                usuario_id: username,
+                edad: b.edad,
+                sexo: b.sexo,
+                peso: b.peso_kg || b.peso,
+                talla: b.altura_cm || b.talla,
+                actividad: b.nivel_actividad || b.actividad,
+                objetivo: b.objetivo
+              })
+            });
+            return res;
+          }
+        }
+
+        // 3. GET /api/usuario/{u}/plan -> POST /planes + polling a GET /planes/{id} y GET /historial
+        const mPlan = url.match(/^\/api\/usuario\/([^/]+)\/plan$/);
+        if (mPlan && method === "GET") {
+          const username = decodeURIComponent(mPlan[1]);
+          const resHist = await origFetch(apiBase + "/historial?usuario_id=" + encodeURIComponent(username), {
+            method: "GET",
+            headers: authHeaders()
+          });
+          if (resHist.ok) {
+            const hist = await resHist.json();
+            const generado = (hist.planes || []).find(p => p.estado === "generado" && p.plan_generado);
+            if (generado) return jsonResponse(200, generado.plan_generado);
+          }
+          const resCrear = await origFetch(apiBase + "/planes", {
+            method: "POST",
+            headers: authHeaders(),
+            body: JSON.stringify({ usuario_id: username })
+          });
+          const creado = await resCrear.json();
+          if (!resCrear.ok) return jsonResponse(resCrear.status, creado);
+          for (let i = 0; i < 15; i++) {
+            await new Promise(r => setTimeout(r, 2000));
+            const resPoll = await origFetch(apiBase + "/planes/" + encodeURIComponent(creado.id), {
+              method: "GET",
+              headers: authHeaders()
+            });
+            if (resPoll.ok) {
+              const item = await resPoll.json();
+              if (item.estado === "generado" && item.plan_generado) {
+                return jsonResponse(200, item.plan_generado);
+              }
+            }
+          }
+          return jsonResponse(202, creado);
+        }
+
+        // 4. DELETE /api/usuario/{u}/plan/hoy -> DELETE /datos en API Gateway
+        const mBorrar = url.match(/^\/api\/usuario\/([^/]+)\/plan\/hoy$/);
+        if (mBorrar && method === "DELETE") {
+          const username = decodeURIComponent(mBorrar[1]);
+          return origFetch(apiBase + "/datos?usuario_id=" + encodeURIComponent(username), {
+            method: "DELETE",
+            headers: authHeaders()
+          });
+        }
+
+        return origFetch(input, init);
+      };
+    })();
   EOT
 }
 
@@ -96,18 +224,6 @@ resource "aws_cloudfront_distribution" "web" {
     origin_access_control_id = aws_cloudfront_origin_access_control.web.id
   }
 
-  origin {
-    domain_name = replace(aws_apigatewayv2_api.http.api_endpoint, "https://", "")
-    origin_id   = "api-primaria"
-
-    custom_origin_config {
-      http_port              = 80
-      https_port             = 443
-      origin_protocol_policy = "https-only"
-      origin_ssl_protocols   = ["TLSv1.2"]
-    }
-  }
-
   default_cache_behavior {
     allowed_methods        = ["GET", "HEAD", "OPTIONS"]
     cached_methods         = ["GET", "HEAD"]
@@ -125,25 +241,6 @@ resource "aws_cloudfront_distribution" "web" {
     function_association {
       event_type   = "viewer-request"
       function_arn = aws_cloudfront_function.rutas_limpias.arn
-    }
-  }
-
-  ordered_cache_behavior {
-    path_pattern           = "/salud"
-    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
-    cached_methods         = ["GET", "HEAD"]
-    target_origin_id       = "api-primaria"
-    viewer_protocol_policy = "https-only"
-    default_ttl            = 0
-    min_ttl                = 0
-    max_ttl                = 0
-
-    forwarded_values {
-      query_string = true
-      headers      = ["Authorization"]
-      cookies {
-        forward = "none"
-      }
     }
   }
 

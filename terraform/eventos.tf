@@ -1,5 +1,6 @@
-# Identidad de correo en Amazon SES para el envío de planes nutricionales
+# Identidad de correo real en Amazon SES para el envío de planes nutricionales
 resource "aws_ses_email_identity" "remitente" {
+  count = var.correo_remitente != "" ? 1 : 0
   email = var.correo_remitente
 }
 
@@ -9,7 +10,7 @@ resource "aws_cloudwatch_event_bus" "eventos" {
 }
 
 # EventBridge Pipe: escucha el stream de DynamoDB (tabla planes) y publica en EventBridge
-# únicamente cuando el worker actualiza el estado del plan a "generado"
+# únicamente cuando el Worker en Elastic Beanstalk actualiza el estado del plan a "generado"
 resource "aws_pipes_pipe" "plan_generado" {
   name     = "${local.nombre}-pipe-plan-generado"
   role_arn = aws_iam_role.pipes_exec.arn
@@ -74,4 +75,3 @@ resource "aws_lambda_permission" "eventbridge_correo" {
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.enviar_correo.arn
 }
-

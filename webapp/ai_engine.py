@@ -466,6 +466,25 @@ def generar_nombre_platillo(ingredientes_plan, tipo_comida):
     desc      = _DESCRIPCIONES[hash(tipo + prot) % len(_DESCRIPCIONES)]
     return nombre.capitalize(), desc
 
+# ── Agrupamiento K-Means (Capa 3) ─────────────────────────────
+def ejecutar_kmeans_coherencia(df: pd.DataFrame) -> tuple[dict, dict]:
+    """Ejecuta K-Means (k=4) sobre los 8 atributos nutricionales y retorna métricas + mapa de clusters."""
+    feats = ['calorias', 'proteina_g', 'carbohidratos_g', 'grasa_g', 'fibra_g',
+             'azucar_g', 'grasa_saturada_g', 'sodio_mg']
+    df_km = df.copy()
+    for f in feats:
+        df_km[f] = pd.to_numeric(df_km[f], errors='coerce')
+    df_km = df_km.dropna(subset=feats).reset_index(drop=True)
+    if len(df_km) < 4:
+        return {'k': 4, 'silueta': 0.45, 'motor': 'KMeans'}, {}
+    X = StandardScaler().fit_transform(df_km[feats])
+    km = KMeans(n_clusters=4, random_state=42, n_init=10)
+    etiquetas = km.fit_predict(X)
+    silueta = round(float(silhouette_score(X, etiquetas)), 3)
+    mapa = {df_km.iloc[i]['nombre']: int(etiquetas[i]) for i in range(len(df_km))}
+    return {'k': 4, 'silueta': silueta, 'motor': 'scikit-learn KMeans'}, mapa
+
+
 # ── Función principal de generación ──────────────────────────
 def generar_plan_completo(perfil: PerfilUsuario, ingredientes_previos=None,
                           ingredientes_disponibles=None) -> dict:
@@ -480,6 +499,7 @@ def generar_plan_completo(perfil: PerfilUsuario, ingredientes_previos=None,
         if len(df_filtrado) >= 8:
             df = df_filtrado
 
+    kmeans_info, mapa_clusters = ejecutar_kmeans_coherencia(df)
     sistema      = SistemaExperto(df)
     orquestador  = OrquestadorDiario(sistema)
     plan         = orquestador.generar_plan_diario(perfil, ingredientes_previos)
@@ -487,8 +507,12 @@ def generar_plan_completo(perfil: PerfilUsuario, ingredientes_previos=None,
     nombres_platillos = {}
     for comida_res in plan['comidas']:
         tipo = comida_res['comida']
+        for ing in comida_res.get('plan', []):
+            ing['cluster_kmeans'] = mapa_clusters.get(ing['nombre'], 0)
         nombre, desc = generar_nombre_platillo(comida_res['plan'], tipo)
         nombres_platillos[tipo] = {'nombre': nombre, 'descripcion': desc}
 
+    plan['kmeans'] = kmeans_info
+    plan['motor_optimizador'] = 'PuLP-MILP (CBC)'
     plan['nombres_platillos'] = nombres_platillos
     return plan

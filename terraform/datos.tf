@@ -1,4 +1,4 @@
-# Tabla Global donde se guardan las solicitudes y los planes generados
+# Tabla donde se guardan las solicitudes y los planes generados (Global Table cuando habilitar_multiregion = true)
 resource "aws_dynamodb_table" "planes" {
   name             = "${local.nombre}-planes"
   billing_mode     = "PAY_PER_REQUEST"
@@ -36,6 +36,14 @@ resource "aws_dynamodb_table" "planes" {
     }
   }
 
+  point_in_time_recovery {
+    enabled = true
+  }
+
+  server_side_encryption {
+    enabled = true
+  }
+
   dynamic "replica" {
     for_each = var.habilitar_multiregion ? [var.aws_region_secundaria] : []
     content {
@@ -44,7 +52,7 @@ resource "aws_dynamodb_table" "planes" {
   }
 }
 
-# Tabla Global donde se guardan los perfiles nutricionales de cada usuario
+# Tabla donde se guardan los perfiles nutricionales de cada usuario (Global Table cuando habilitar_multiregion = true)
 resource "aws_dynamodb_table" "perfiles" {
   name             = "${local.nombre}-perfiles"
   billing_mode     = "PAY_PER_REQUEST"
@@ -57,6 +65,14 @@ resource "aws_dynamodb_table" "perfiles" {
     type = "S"
   }
 
+  point_in_time_recovery {
+    enabled = true
+  }
+
+  server_side_encryption {
+    enabled = true
+  }
+
   dynamic "replica" {
     for_each = var.habilitar_multiregion ? [var.aws_region_secundaria] : []
     content {
@@ -65,19 +81,21 @@ resource "aws_dynamodb_table" "perfiles" {
   }
 }
 
-# Cola que desacopla la API del worker que genera el plan
+# Cola que desacopla la API del worker en Elastic Beanstalk que genera el plan
 resource "aws_sqs_queue" "solicitudes_dlq" {
   name                      = "${local.nombre}-solicitudes-dlq"
   message_retention_seconds = 1209600
+  sqs_managed_sse_enabled   = true
 }
 
 resource "aws_sqs_queue" "solicitudes" {
   name                       = "${local.nombre}-solicitudes"
-  visibility_timeout_seconds = 90
+  visibility_timeout_seconds = var.sqs_visibility_timeout
   message_retention_seconds  = 86400
+  sqs_managed_sse_enabled    = true
 
   redrive_policy = jsonencode({
     deadLetterTargetArn = aws_sqs_queue.solicitudes_dlq.arn
-    maxReceiveCount     = 3
+    maxReceiveCount     = var.sqs_max_receive_count
   })
 }

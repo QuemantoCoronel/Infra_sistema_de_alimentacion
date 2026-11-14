@@ -45,12 +45,12 @@ output "cola_dlq" {
 }
 
 output "tabla_planes" {
-  description = "Tabla Global DynamoDB de planes"
+  description = "Tabla DynamoDB de planes"
   value       = aws_dynamodb_table.planes.name
 }
 
 output "tabla_perfiles" {
-  description = "Tabla Global DynamoDB de perfiles"
+  description = "Tabla DynamoDB de perfiles"
   value       = aws_dynamodb_table.perfiles.name
 }
 
@@ -80,11 +80,26 @@ output "route53_health_check_primario_id" {
 }
 
 output "beanstalk_application" {
-  description = "Nombre de la aplicación en AWS Elastic Beanstalk"
+  description = "Nombre de la aplicación Worker en AWS Elastic Beanstalk"
   value       = aws_elastic_beanstalk_application.nutriperu.name
 }
 
 output "beanstalk_endpoint_url" {
-  description = "URL del entorno desplegado en AWS Elastic Beanstalk"
+  description = "URL del entorno Worker desplegado en AWS Elastic Beanstalk"
   value       = var.habilitar_beanstalk ? "http://${aws_elastic_beanstalk_environment.env[0].endpoint_url}" : null
+}
+
+output "secretsmanager_secret_arn" {
+  description = "ARN del secreto en AWS Secrets Manager"
+  value       = aws_secretsmanager_secret.app.arn
+}
+
+output "backup_vault_name" {
+  description = "Nombre de la bóveda de respaldos en AWS Backup"
+  value       = aws_backup_vault.principal.name
+}
+
+output "cloudtrail_name" {
+  description = "Nombre del trail de auditoría en AWS CloudTrail"
+  value       = aws_cloudtrail.auditoria.name
 }

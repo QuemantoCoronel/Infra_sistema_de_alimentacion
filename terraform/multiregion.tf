@@ -1,4 +1,5 @@
 # Despliegue multirregión en la región secundaria (us-east-1) consumiendo las réplicas de DynamoDB Global Tables
+# (Se activa únicamente cuando var.habilitar_multiregion = true)
 locals {
   funciones_secundarias = var.habilitar_multiregion ? {
     salud          = { handler = "salud.handler", timeout = 5, ruta = "GET /salud", protegida = false }
@@ -22,7 +23,7 @@ resource "aws_lambda_function" "funcion_secundaria" {
   for_each = local.funciones_secundarias
 
   function_name    = "${local.nombre}-${each.key}"
-  role             = aws_iam_role.lambda_exec.arn
+  role             = aws_iam_role.lambda[each.key].arn
   runtime          = "python3.11"
   handler          = each.value.handler
   timeout          = each.value.timeout
@@ -34,12 +35,13 @@ resource "aws_lambda_function" "funcion_secundaria" {
     variables = {
       TABLA_PLANES   = aws_dynamodb_table.planes.name
       TABLA_PERFILES = aws_dynamodb_table.perfiles.name
+      CORS_ORIGIN    = local.cors_origen_principal
     }
   }
 
   depends_on = [
     aws_cloudwatch_log_group.lambda_secundaria,
-    aws_iam_role_policy.lambda_permisos,
+    aws_iam_role_policy.lambda,
     aws_dynamodb_table.planes,
     aws_dynamodb_table.perfiles,
   ]
@@ -52,7 +54,7 @@ resource "aws_apigatewayv2_api" "http_secundaria" {
   protocol_type = "HTTP"
 
   cors_configuration {
-    allow_origins = ["*"]
+    allow_origins = local.cors_origenes
     allow_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     allow_headers = ["Content-Type", "Authorization"]
     max_age       = 3600
@@ -109,4 +111,3 @@ resource "aws_lambda_permission" "api_secundaria" {
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.http_secundaria[0].execution_arn}/*/*"
 }
-

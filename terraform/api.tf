@@ -1,10 +1,18 @@
-# API HTTP que recibe las solicitudes de la aplicación web
+locals {
+  cors_origen_principal = var.dominio != "" ? "https://${var.dominio}" : "https://${aws_cloudfront_distribution.web.domain_name}"
+  cors_origenes = compact([
+    "https://${aws_cloudfront_distribution.web.domain_name}",
+    var.dominio != "" ? "https://${var.dominio}" : "",
+  ])
+}
+
+# API HTTP que recibe las solicitudes de la aplicación web (CORS restringido a CloudFront y dominio propio)
 resource "aws_apigatewayv2_api" "http" {
   name          = "${local.nombre}-api"
   protocol_type = "HTTP"
 
   cors_configuration {
-    allow_origins = ["*"]
+    allow_origins = local.cors_origenes
     allow_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     allow_headers = ["Content-Type", "Authorization"]
     max_age       = 3600
