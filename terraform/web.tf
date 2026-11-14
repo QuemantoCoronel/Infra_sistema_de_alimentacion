@@ -239,6 +239,9 @@ resource "aws_cloudfront_distribution" "web" {
     viewer_protocol_policy = "redirect-to-https"
     compress               = true
 
+    # Cabeceras de seguridad administradas por AWS (HSTS, X-Frame-Options, etc.)
+    response_headers_policy_id = data.aws_cloudfront_response_headers_policy.seguridad.id
+
     forwarded_values {
       query_string = false
       cookies {
@@ -285,4 +288,8 @@ data "aws_iam_policy_document" "politica_bucket_web" {
 resource "aws_s3_bucket_policy" "web" {
   bucket = aws_s3_bucket.web.id
   policy = data.aws_iam_policy_document.politica_bucket_web.json
+}
+
+data "aws_cloudfront_response_headers_policy" "seguridad" {
+  name = "Managed-SecurityHeadersPolicy"
 }
