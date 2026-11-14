@@ -78,3 +78,13 @@ output "route53_health_check_primario_id" {
   description = "ID del Health Check de Route 53 para la región principal"
   value       = aws_route53_health_check.api_primaria.id
 }
+
+output "beanstalk_application" {
+  description = "Nombre de la aplicación en AWS Elastic Beanstalk"
+  value       = aws_elastic_beanstalk_application.nutriperu.name
+}
+
+output "beanstalk_endpoint_url" {
+  description = "URL del entorno desplegado en AWS Elastic Beanstalk"
+  value       = var.habilitar_beanstalk ? "http://${aws_elastic_beanstalk_environment.env[0].endpoint_url}" : null
+}

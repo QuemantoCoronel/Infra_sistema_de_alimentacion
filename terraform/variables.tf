@@ -52,6 +52,18 @@ variable "crear_zona_route53" {
   default     = false
 }
 
+variable "habilitar_beanstalk" {
+  description = "Habilita el despliegue del entorno de AWS Elastic Beanstalk para la aplicacion web y panel academico"
+  type        = bool
+  default     = true
+}
+
+variable "beanstalk_instance_type" {
+  description = "Tipo de instancia EC2 para el entorno de AWS Elastic Beanstalk"
+  type        = string
+  default     = "t3.micro"
+}
+
 locals {
   nombre = "${var.prefijo}-${var.entorno}"
 }
