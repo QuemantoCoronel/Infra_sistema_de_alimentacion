@@ -15,7 +15,7 @@ resource "aws_cloudwatch_log_group" "lambda_secundaria" {
   provider          = aws.secundaria
   for_each          = local.funciones_secundarias
   name              = "/aws/lambda/${local.nombre}-${each.key}"
-  retention_in_days = 7
+  retention_in_days = 365
 }
 
 resource "aws_lambda_function" "funcion_secundaria" {
@@ -31,6 +31,9 @@ resource "aws_lambda_function" "funcion_secundaria" {
   filename         = data.archive_file.lambdas.output_path
   source_code_hash = data.archive_file.lambdas.output_base64sha256
 
+  tracing_config {
+    mode = "Active"
+  }
   environment {
     variables = {
       TABLA_PLANES   = aws_dynamodb_table.planes.name

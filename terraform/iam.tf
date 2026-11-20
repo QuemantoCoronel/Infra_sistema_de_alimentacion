@@ -123,6 +123,12 @@ data "aws_iam_policy_document" "lambda_por_funcion" {
     ]
   }
 
+  statement {
+    sid       = "TrazasXRay"
+    actions   = ["xray:PutTraceSegments", "xray:PutTelemetryRecords"]
+    resources = ["*"]
+  }
+
   dynamic "statement" {
     for_each = local.permisos_por_funcion[each.key]
     content {
