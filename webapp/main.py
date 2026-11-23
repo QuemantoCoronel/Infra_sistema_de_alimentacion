@@ -420,48 +420,6 @@ def _procesar_mensaje_sqs(mensaje: dict) -> dict:
 
 
 @app.post("/worker/procesar")
-@app.post("/")
 def endpoint_worker_beanstalk(payload: dict):
     """Recibe mensajes de la cola SQS a través del demonio sqsd de Elastic Beanstalk."""
     return _procesar_mensaje_sqs(payload)
-
-
-def _iniciar_consumidor_sqs_background():
-    """Hilo consumidor de SQS para entornos Elastic Beanstalk donde COLA_URL está configurada."""
-    import os
-    import threading
-    import time
-
-    cola_url = os.getenv("COLA_URL")
-    tabla_planes = os.getenv("TABLA_PLANES")
-    if not cola_url or not tabla_planes:
-        return
-
-    def _loop():
-        import boto3
-        region = os.getenv("AWS_DEFAULT_REGION", os.getenv("AWS_REGION", "sa-east-1"))
-        sqs = boto3.client("sqs", region_name=region)
-        while True:
-            try:
-                resp = sqs.receive_message(
-                    QueueUrl=cola_url,
-                    MaxNumberOfMessages=1,
-                    WaitTimeSeconds=20,
-                    VisibilityTimeout=300,
-                )
-                for msg in resp.get("Messages", []):
-                    cuerpo = json.loads(msg["Body"])
-                    _procesar_mensaje_sqs(cuerpo)
-                    sqs.delete_message(
-                        QueueUrl=cola_url,
-                        ReceiptHandle=msg["ReceiptHandle"],
-                    )
-            except Exception as exc:
-                print(f"[Worker Beanstalk SQS] Aviso: {exc}")
-                time.sleep(5)
-
-    hilo = threading.Thread(target=_loop, daemon=True)
-    hilo.start()
-
-
-_iniciar_consumidor_sqs_background()

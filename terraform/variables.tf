@@ -77,9 +77,27 @@ variable "habilitar_beanstalk" {
 }
 
 variable "beanstalk_instance_type" {
-  description = "Tipo de instancia EC2 para el Worker en AWS Elastic Beanstalk"
+  description = "Tipo de instancia EC2 para el Worker en AWS Elastic Beanstalk (2 vCPU para el optimizador)"
   type        = string
-  default     = "t3.micro"
+  default     = "t3.small"
+}
+
+variable "worker_min_instancias" {
+  description = "Cantidad mínima de EC2 del worker en el grupo de Auto Scaling"
+  type        = number
+  default     = 1
+}
+
+variable "worker_max_instancias" {
+  description = "Cantidad máxima de EC2 del worker en el grupo de Auto Scaling"
+  type        = number
+  default     = 3
+}
+
+variable "vpc_cidr" {
+  description = "Rango de direcciones de la VPC del worker"
+  type        = string
+  default     = "10.20.0.0/16"
 }
 
 locals {
