@@ -239,6 +239,7 @@
 
     function cerrarSesion() {
       localStorage.removeItem('np_username');
+      localStorage.removeItem('np_jwt');
       window.location.href = '/';
     }
 

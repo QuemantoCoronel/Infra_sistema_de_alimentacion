@@ -84,6 +84,16 @@ resource "aws_s3_object" "config_js" {
         });
       }
 
+      async function apiFetch(url, opciones) {
+        const res = await origFetch(url, opciones);
+        if (res.status === 401) {
+          localStorage.removeItem("np_jwt");
+          localStorage.removeItem("np_username");
+          window.location.href = "/";
+        }
+        return res;
+      }
+
       window.fetch = async function(input, init) {
         const url = typeof input === "string" ? input : input.url;
         const method = ((init && init.method) || "GET").toUpperCase();
@@ -92,7 +102,7 @@ resource "aws_s3_object" "config_js" {
         if (url === "/api/usuario/entrar" && method === "POST") {
           const body = JSON.parse((init && init.body) || "{}");
           const username = (body.username || "").trim().toLowerCase();
-          const res = await origFetch(apiBase + "/perfil?usuario_id=" + encodeURIComponent(username), {
+          const res = await apiFetch(apiBase + "/perfil?usuario_id=" + encodeURIComponent(username), {
             method: "GET",
             headers: authHeaders()
           });
@@ -105,7 +115,7 @@ resource "aws_s3_object" "config_js" {
         if (mPerfil) {
           const username = decodeURIComponent(mPerfil[1]);
           if (method === "GET") {
-            const res = await origFetch(apiBase + "/perfil?usuario_id=" + encodeURIComponent(username), {
+            const res = await apiFetch(apiBase + "/perfil?usuario_id=" + encodeURIComponent(username), {
               method: "GET",
               headers: authHeaders()
             });
@@ -126,7 +136,7 @@ resource "aws_s3_object" "config_js" {
           }
           if (method === "POST" || method === "PUT") {
             const b = JSON.parse((init && init.body) || "{}");
-            const res = await origFetch(apiBase + "/perfil", {
+            const res = await apiFetch(apiBase + "/perfil", {
               method: "PUT",
               headers: authHeaders(),
               body: JSON.stringify({
@@ -147,7 +157,7 @@ resource "aws_s3_object" "config_js" {
         const mPlan = url.match(/^\/api\/usuario\/([^/]+)\/plan$/);
         if (mPlan && method === "GET") {
           const username = decodeURIComponent(mPlan[1]);
-          const resHist = await origFetch(apiBase + "/historial?usuario_id=" + encodeURIComponent(username), {
+          const resHist = await apiFetch(apiBase + "/historial?usuario_id=" + encodeURIComponent(username), {
             method: "GET",
             headers: authHeaders()
           });
@@ -156,7 +166,7 @@ resource "aws_s3_object" "config_js" {
             const generado = (hist.planes || []).find(p => p.estado === "generado" && p.plan_generado);
             if (generado) return jsonResponse(200, generado.plan_generado);
           }
-          const resCrear = await origFetch(apiBase + "/planes", {
+          const resCrear = await apiFetch(apiBase + "/planes", {
             method: "POST",
             headers: authHeaders(),
             body: JSON.stringify({ usuario_id: username })
@@ -165,7 +175,7 @@ resource "aws_s3_object" "config_js" {
           if (!resCrear.ok) return jsonResponse(resCrear.status, creado);
           for (let i = 0; i < 15; i++) {
             await new Promise(r => setTimeout(r, 2000));
-            const resPoll = await origFetch(apiBase + "/planes/" + encodeURIComponent(creado.id), {
+            const resPoll = await apiFetch(apiBase + "/planes/" + encodeURIComponent(creado.id), {
               method: "GET",
               headers: authHeaders()
             });
@@ -183,7 +193,7 @@ resource "aws_s3_object" "config_js" {
         const mBorrar = url.match(/^\/api\/usuario\/([^/]+)\/plan\/hoy$/);
         if (mBorrar && method === "DELETE") {
           const username = decodeURIComponent(mBorrar[1]);
-          return origFetch(apiBase + "/datos?usuario_id=" + encodeURIComponent(username), {
+          return apiFetch(apiBase + "/datos?usuario_id=" + encodeURIComponent(username), {
             method: "DELETE",
             headers: authHeaders()
           });
