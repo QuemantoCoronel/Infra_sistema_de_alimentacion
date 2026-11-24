@@ -6,11 +6,26 @@ cuando un plan pasa al estado 'generado'.
 
 import json
 import os
+import time
 
 import boto3
 from botocore.exceptions import ClientError
 
 ses = boto3.client("ses")
+tabla_planes = boto3.resource("dynamodb").Table(os.environ["TABLA_PLANES"])
+
+
+def _marcar_correo(plan_id, estado, detalle=""):
+    valores = {":e": estado, ":t": int(time.time())}
+    expresion = "SET estado_correo = :e, correo_actualizado = :t"
+    if detalle:
+        expresion += ", error_correo = :d"
+        valores[":d"] = detalle[:500]
+    tabla_planes.update_item(
+        Key={"id": plan_id},
+        UpdateExpression=expresion,
+        ExpressionAttributeValues=valores,
+    )
 
 
 def _extraer_imagen_dynamodb(evento):
@@ -72,6 +87,7 @@ def handler(event, context):
 
         if not remitente or not destinatario:
             print(f"Plan {datos['id']}: correo omitido por falta de remitente/destinatario configurado.")
+            _marcar_correo(datos["id"], "omitido", "Sin remitente o destinatario")
             continue
 
         try:
@@ -83,11 +99,14 @@ def handler(event, context):
                     "Body": {"Text": {"Data": cuerpo_texto, "Charset": "UTF-8"}},
                 },
             )
-            enviados += 1
-            print(f"Correo SES enviado a {destinatario} para el plan {datos['id']}")
         except ClientError as exc:
-            # En modo sandbox de SES, si el correo aún no fue verificado, registramos en CloudWatch sin romper el lote
-            print(f"Aviso SES para {destinatario} (plan {datos['id']}): {exc}")
+            print(f"Error SES para {destinatario} (plan {datos['id']}): {exc}")
+            _marcar_correo(datos["id"], "error", str(exc))
+            raise
+
+        _marcar_correo(datos["id"], "enviado")
+        enviados += 1
+        print(f"Correo SES enviado a {destinatario} para el plan {datos['id']}")
 
     return {"statusCode": 200, "correos_enviados": enviados}
 

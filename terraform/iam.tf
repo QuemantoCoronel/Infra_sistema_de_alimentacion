@@ -107,6 +107,16 @@ locals {
         actions   = ["secretsmanager:GetSecretValue"]
         resources = [aws_secretsmanager_secret.app.arn]
       },
+      {
+        sid       = "MarcarEstadoCorreo"
+        actions   = ["dynamodb:UpdateItem"]
+        resources = [aws_dynamodb_table.planes.arn]
+      },
+      {
+        sid       = "EnviarFallosCorreoDLQ"
+        actions   = ["sqs:SendMessage"]
+        resources = [aws_sqs_queue.correos_dlq.arn]
+      },
     ]
   }
 }

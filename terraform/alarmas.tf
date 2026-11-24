@@ -94,3 +94,23 @@ resource "aws_cloudwatch_metric_alarm" "correo_errores" {
   alarm_actions = [aws_sns_topic.alarmas.arn]
   ok_actions    = [aws_sns_topic.alarmas.arn]
 }
+
+resource "aws_cloudwatch_metric_alarm" "correos_dlq" {
+  alarm_name          = "${local.nombre}-correos-dlq"
+  alarm_description   = "Alerta cuando un correo falla despues de los reintentos y queda en la cola de errores"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = 1
+  metric_name         = "ApproximateNumberOfMessagesVisible"
+  namespace           = "AWS/SQS"
+  period              = 60
+  statistic           = "Sum"
+  threshold           = 1
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    QueueName = aws_sqs_queue.correos_dlq.name
+  }
+
+  alarm_actions = [aws_sns_topic.alarmas.arn]
+  ok_actions    = [aws_sns_topic.alarmas.arn]
+}
