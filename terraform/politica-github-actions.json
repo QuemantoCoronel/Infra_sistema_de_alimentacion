@@ -10,6 +10,7 @@
         "autoscaling:*",
         "backup:*",
         "backup-storage:*",
+        "cloudformation:*",
         "cloudfront:*",
         "cloudtrail:*",
         "cloudwatch:*",

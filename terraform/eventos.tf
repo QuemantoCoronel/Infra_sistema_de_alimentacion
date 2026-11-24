@@ -28,6 +28,11 @@ resource "aws_pipes_pipe" "plan_generado" {
         pattern = jsonencode({
           eventName = ["MODIFY"]
           dynamodb = {
+            OldImage = {
+              estado = {
+                S = ["pendiente"]
+              }
+            }
             NewImage = {
               estado = {
                 S = ["generado"]
@@ -66,6 +71,26 @@ resource "aws_cloudwatch_event_target" "lambda_correo" {
   event_bus_name = aws_cloudwatch_event_bus.eventos.name
   target_id      = "EnviarCorreoSES"
   arn            = aws_lambda_function.funcion["enviar-correo"].arn
+}
+
+resource "aws_sqs_queue" "correos_dlq" {
+  name                      = "${local.nombre}-correos-dlq"
+  message_retention_seconds = 1209600
+  sqs_managed_sse_enabled   = true
+}
+
+resource "aws_lambda_function_event_invoke_config" "correo" {
+  function_name                = aws_lambda_function.funcion["enviar-correo"].function_name
+  maximum_retry_attempts       = 2
+  maximum_event_age_in_seconds = 3600
+
+  destination_config {
+    on_failure {
+      destination = aws_sqs_queue.correos_dlq.arn
+    }
+  }
+
+  depends_on = [aws_iam_role_policy.lambda]
 }
 
 resource "aws_lambda_permission" "eventbridge_correo" {

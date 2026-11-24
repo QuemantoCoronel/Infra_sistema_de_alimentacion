@@ -133,8 +133,28 @@ data "archive_file" "beanstalk_app" {
   ]
 }
 
+resource "aws_s3_bucket" "versiones_worker" {
+  bucket        = "${local.nombre}-versiones-worker-${data.aws_caller_identity.actual.account_id}"
+  force_destroy = true
+}
+
+resource "aws_s3_bucket_public_access_block" "versiones_worker" {
+  bucket                  = aws_s3_bucket.versiones_worker.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_versioning" "versiones_worker" {
+  bucket = aws_s3_bucket.versiones_worker.id
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
 resource "aws_s3_object" "beanstalk_zip" {
-  bucket = aws_s3_bucket.web.id
+  bucket = aws_s3_bucket.versiones_worker.id
   key    = "beanstalk/nutriperu-${data.archive_file.beanstalk_app.output_md5}.zip"
   source = data.archive_file.beanstalk_app.output_path
   etag   = data.archive_file.beanstalk_app.output_md5
@@ -144,106 +164,65 @@ resource "aws_elastic_beanstalk_application_version" "actual" {
   name        = "${local.nombre}-v-${substr(data.archive_file.beanstalk_app.output_md5, 0, 8)}"
   application = aws_elastic_beanstalk_application.nutriperu.name
   description = "Version del Worker (PuLP + K-Means) empaquetada por Terraform"
-  bucket      = aws_s3_bucket.web.id
+  bucket      = aws_s3_bucket.versiones_worker.id
   key         = aws_s3_object.beanstalk_zip.key
 }
 
-# Entorno en Elastic Beanstalk que consume la cola SQS y ejecuta el motor PuLP + K-Means
+locals {
+  ajustes_worker = [
+    ["aws:ec2:vpc", "VPCId", aws_vpc.worker.id],
+    ["aws:ec2:vpc", "Subnets", join(",", aws_subnet.publica[*].id)],
+    ["aws:ec2:vpc", "AssociatePublicIpAddress", "true"],
+    ["aws:autoscaling:launchconfiguration", "IamInstanceProfile", aws_iam_instance_profile.beanstalk_ec2.name],
+    ["aws:autoscaling:launchconfiguration", "InstanceType", var.beanstalk_instance_type],
+    ["aws:autoscaling:launchconfiguration", "RootVolumeType", "gp3"],
+    ["aws:autoscaling:launchconfiguration", "DisableIMDSv1", "true"],
+    ["aws:autoscaling:asg", "MinSize", tostring(var.worker_min_instancias)],
+    ["aws:autoscaling:asg", "MaxSize", tostring(var.worker_max_instancias)],
+    ["aws:autoscaling:trigger", "MeasureName", "CPUUtilization"],
+    ["aws:autoscaling:trigger", "Statistic", "Average"],
+    ["aws:autoscaling:trigger", "Unit", "Percent"],
+    ["aws:autoscaling:trigger", "Period", "1"],
+    ["aws:autoscaling:trigger", "BreachDuration", "1"],
+    ["aws:autoscaling:trigger", "UpperThreshold", "60"],
+    ["aws:autoscaling:trigger", "LowerThreshold", "20"],
+    ["aws:elasticbeanstalk:environment", "ServiceRole", aws_iam_role.beanstalk_service.arn],
+    ["aws:elasticbeanstalk:healthreporting:system", "SystemType", "enhanced"],
+    ["aws:elasticbeanstalk:cloudwatch:logs", "StreamLogs", "true"],
+    ["aws:elasticbeanstalk:cloudwatch:logs", "RetentionInDays", "365"],
+    ["aws:elasticbeanstalk:managedactions", "ManagedActionsEnabled", "true"],
+    ["aws:elasticbeanstalk:managedactions", "PreferredStartTime", "Sun:06:00"],
+    ["aws:elasticbeanstalk:managedactions:platformupdate", "UpdateLevel", "minor"],
+    ["aws:elasticbeanstalk:sqsd", "WorkerQueueURL", aws_sqs_queue.solicitudes.url],
+    ["aws:elasticbeanstalk:sqsd", "HttpPath", "/worker/procesar"],
+    ["aws:elasticbeanstalk:sqsd", "MimeType", "application/json"],
+    ["aws:elasticbeanstalk:sqsd", "HttpConnections", "2"],
+    ["aws:elasticbeanstalk:sqsd", "VisibilityTimeout", tostring(var.sqs_visibility_timeout)],
+    ["aws:elasticbeanstalk:sqsd", "InactivityTimeout", "120"],
+    ["aws:elasticbeanstalk:sqsd", "MaxRetries", tostring(var.sqs_max_receive_count)],
+    ["aws:elasticbeanstalk:application:environment", "TABLA_PLANES", aws_dynamodb_table.planes.name],
+    ["aws:elasticbeanstalk:application:environment", "TABLA_PERFILES", aws_dynamodb_table.perfiles.name],
+    ["aws:elasticbeanstalk:application:environment", "SECRETO_ARN", aws_secretsmanager_secret.app.arn],
+    ["aws:elasticbeanstalk:application:environment", "AWS_DEFAULT_REGION", var.aws_region],
+  ]
+}
+
 resource "aws_elastic_beanstalk_environment" "env" {
   count               = var.habilitar_beanstalk ? 1 : 0
   name                = "${local.nombre}-worker-env"
   application         = aws_elastic_beanstalk_application.nutriperu.name
   solution_stack_name = data.aws_elastic_beanstalk_solution_stack.python.name
   version_label       = aws_elastic_beanstalk_application_version.actual.name
-  tier                = "WebServer"
+  tier                = "Worker"
 
-  setting {
-    namespace = "aws:autoscaling:launchconfiguration"
-    name      = "IamInstanceProfile"
-    value     = aws_iam_instance_profile.beanstalk_ec2.name
+  dynamic "setting" {
+    for_each = local.ajustes_worker
+    content {
+      namespace = setting.value[0]
+      name      = setting.value[1]
+      value     = setting.value[2]
+    }
   }
 
-  setting {
-    namespace = "aws:autoscaling:launchconfiguration"
-    name      = "InstanceType"
-    value     = var.beanstalk_instance_type
-  }
-
-  setting {
-    namespace = "aws:autoscaling:launchconfiguration"
-    name      = "RootVolumeType"
-    value     = "gp3"
-  }
-
-  setting {
-    namespace = "aws:autoscaling:launchconfiguration"
-    name      = "DisableIMDSv1"
-    value     = "true"
-  }
-
-  setting {
-    namespace = "aws:elasticbeanstalk:environment"
-    name      = "EnvironmentType"
-    value     = "SingleInstance"
-  }
-
-  setting {
-    namespace = "aws:elasticbeanstalk:environment"
-    name      = "ServiceRole"
-    value     = aws_iam_role.beanstalk_service.arn
-  }
-
-  setting {
-    namespace = "aws:elasticbeanstalk:healthreporting:system"
-    name      = "SystemType"
-    value     = "enhanced"
-  }
-
-  setting {
-    namespace = "aws:elasticbeanstalk:managedactions"
-    name      = "ManagedActionsEnabled"
-    value     = "true"
-  }
-
-  setting {
-    namespace = "aws:elasticbeanstalk:managedactions"
-    name      = "PreferredStartTime"
-    value     = "Sun:06:00"
-  }
-
-  setting {
-    namespace = "aws:elasticbeanstalk:managedactions:platformupdate"
-    name      = "UpdateLevel"
-    value     = "minor"
-  }
-
-  setting {
-    namespace = "aws:elasticbeanstalk:application:environment"
-    name      = "TABLA_PLANES"
-    value     = aws_dynamodb_table.planes.name
-  }
-
-  setting {
-    namespace = "aws:elasticbeanstalk:application:environment"
-    name      = "TABLA_PERFILES"
-    value     = aws_dynamodb_table.perfiles.name
-  }
-
-  setting {
-    namespace = "aws:elasticbeanstalk:application:environment"
-    name      = "COLA_URL"
-    value     = aws_sqs_queue.solicitudes.url
-  }
-
-  setting {
-    namespace = "aws:elasticbeanstalk:application:environment"
-    name      = "SECRETO_ARN"
-    value     = aws_secretsmanager_secret.app.arn
-  }
-
-  setting {
-    namespace = "aws:elasticbeanstalk:application:environment"
-    name      = "AWS_DEFAULT_REGION"
-    value     = var.aws_region
-  }
+  depends_on = [aws_route_table_association.publica]
 }

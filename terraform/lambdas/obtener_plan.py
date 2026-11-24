@@ -2,7 +2,7 @@ import json
 import os
 
 import boto3
-from comun import respuesta
+from comun import extraer_usuario, respuesta
 
 tabla = boto3.resource("dynamodb").Table(os.environ["TABLA_PLANES"])
 
@@ -12,8 +12,9 @@ def handler(event, context):
     if not plan_id:
         return respuesta(400, {"error": "Falta el id del plan"})
 
+    usuario_id, _ = extraer_usuario(event)
     item = tabla.get_item(Key={"id": plan_id}).get("Item")
-    if not item:
+    if not item or item.get("usuario_id") != usuario_id:
         return respuesta(404, {"error": "Plan no encontrado"})
 
     # Deserializar campos JSON enriquecidos si ya están generados

@@ -84,9 +84,19 @@ output "beanstalk_application" {
   value       = aws_elastic_beanstalk_application.nutriperu.name
 }
 
-output "beanstalk_endpoint_url" {
-  description = "URL del entorno Worker desplegado en AWS Elastic Beanstalk"
-  value       = var.habilitar_beanstalk ? "http://${aws_elastic_beanstalk_environment.env[0].endpoint_url}" : null
+output "beanstalk_worker_env" {
+  description = "Nombre del entorno Worker de AWS Elastic Beanstalk (no tiene URL pública: lee la cola SQS)"
+  value       = var.habilitar_beanstalk ? aws_elastic_beanstalk_environment.env[0].name : null
+}
+
+output "vpc_worker_id" {
+  description = "VPC donde corren las EC2 del worker"
+  value       = aws_vpc.worker.id
+}
+
+output "subredes_worker" {
+  description = "Subredes públicas del worker (una por zona de disponibilidad)"
+  value       = aws_subnet.publica[*].id
 }
 
 output "secretsmanager_secret_arn" {
