@@ -91,7 +91,7 @@ variable "worker_min_instancias" {
 variable "worker_max_instancias" {
   description = "Cantidad máxima de EC2 del worker en el grupo de Auto Scaling"
   type        = number
-  default     = 3
+  default     = 7
 }
 
 variable "vpc_cidr" {
