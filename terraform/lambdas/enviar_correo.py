@@ -28,6 +28,21 @@ def _marcar_correo(plan_id, estado, detalle=""):
     )
 
 
+def _tomar_envio(plan_id):
+    try:
+        tabla_planes.update_item(
+            Key={"id": plan_id},
+            UpdateExpression="SET estado_correo = :enviando, correo_actualizado = :t",
+            ConditionExpression="attribute_not_exists(estado_correo) OR estado_correo = :error",
+            ExpressionAttributeValues={":enviando": "enviando", ":error": "error", ":t": int(time.time())},
+        )
+        return True
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            return False
+        raise
+
+
 def _extraer_imagen_dynamodb(evento):
     """Extrae los campos de NewImage tanto si viene directo del Pipe como envuelto en EventBridge."""
     detalle = evento.get("detail") or evento
@@ -88,6 +103,10 @@ def handler(event, context):
         if not remitente or not destinatario:
             print(f"Plan {datos['id']}: correo omitido por falta de remitente/destinatario configurado.")
             _marcar_correo(datos["id"], "omitido", "Sin remitente o destinatario")
+            continue
+
+        if not _tomar_envio(datos["id"]):
+            print(f"Plan {datos['id']}: el correo ya fue enviado o se está enviando, no se repite.")
             continue
 
         try:
