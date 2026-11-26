@@ -28,13 +28,25 @@ def _marcar_correo(plan_id, estado, detalle=""):
     )
 
 
+SEGUNDOS_RESERVA = 60
+
+
 def _tomar_envio(plan_id):
+    ahora = int(time.time())
     try:
         tabla_planes.update_item(
             Key={"id": plan_id},
             UpdateExpression="SET estado_correo = :enviando, correo_actualizado = :t",
-            ConditionExpression="attribute_not_exists(estado_correo) OR estado_correo = :error",
-            ExpressionAttributeValues={":enviando": "enviando", ":error": "error", ":t": int(time.time())},
+            ConditionExpression=(
+                "attribute_not_exists(estado_correo) OR estado_correo = :error "
+                "OR (estado_correo = :enviando AND correo_actualizado < :vencido)"
+            ),
+            ExpressionAttributeValues={
+                ":enviando": "enviando",
+                ":error": "error",
+                ":t": ahora,
+                ":vencido": ahora - SEGUNDOS_RESERVA,
+            },
         )
         return True
     except ClientError as exc:
@@ -123,8 +135,11 @@ def handler(event, context):
             _marcar_correo(datos["id"], "error", str(exc))
             raise
 
-        _marcar_correo(datos["id"], "enviado")
         enviados += 1
+        try:
+            _marcar_correo(datos["id"], "enviado")
+        except ClientError as exc:
+            print(f"Plan {datos['id']}: correo enviado, pero no se pudo guardar el estado: {exc}")
         print(f"Correo SES enviado a {destinatario} para el plan {datos['id']}")
 
     return {"statusCode": 200, "correos_enviados": enviados}
