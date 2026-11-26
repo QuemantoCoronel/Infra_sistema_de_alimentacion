@@ -12,6 +12,7 @@ import boto3
 from botocore.exceptions import ClientError
 
 ses = boto3.client("ses")
+sqs = boto3.client("sqs")
 tabla_planes = boto3.resource("dynamodb").Table(os.environ["TABLA_PLANES"])
 
 
@@ -21,13 +22,39 @@ def _marcar_correo(plan_id, estado, detalle=""):
     if detalle:
         expresion += ", error_correo = :d"
         valores[":d"] = detalle[:500]
-    tabla_planes.update_item(
-        Key={"id": plan_id},
-        UpdateExpression=expresion,
-        ExpressionAttributeValues=valores,
+    try:
+        tabla_planes.update_item(
+            Key={"id": plan_id},
+            UpdateExpression=expresion,
+            ConditionExpression="attribute_exists(id)",
+            ExpressionAttributeValues=valores,
+        )
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] != "ConditionalCheckFailedException":
+            raise
+        print(f"Plan {plan_id}: ya no existe, no se guarda el estado del correo.")
+
+
+def _guardar_enviado(plan_id, destinatario):
+    for intento in range(INTENTOS_GUARDAR):
+        try:
+            _marcar_correo(plan_id, "enviado")
+            return
+        except ClientError as exc:
+            print(f"Plan {plan_id}: intento {intento + 1} de guardar 'enviado' fallo: {exc}")
+            if intento < INTENTOS_GUARDAR - 1:
+                time.sleep(2 ** intento)
+    sqs.send_message(
+        QueueUrl=os.environ["CORREOS_DLQ_URL"],
+        MessageBody=json.dumps({
+            "plan_id": plan_id,
+            "destinatario": destinatario,
+            "motivo": "Correo enviado, pero no se pudo guardar estado_correo = enviado",
+        }),
     )
 
 
+INTENTOS_GUARDAR = 3
 SEGUNDOS_RESERVA = 60
 
 
@@ -38,8 +65,9 @@ def _tomar_envio(plan_id):
             Key={"id": plan_id},
             UpdateExpression="SET estado_correo = :enviando, correo_actualizado = :t",
             ConditionExpression=(
-                "attribute_not_exists(estado_correo) OR estado_correo = :error "
-                "OR (estado_correo = :enviando AND correo_actualizado < :vencido)"
+                "attribute_exists(id) AND (attribute_not_exists(estado_correo) "
+                "OR estado_correo = :error "
+                "OR (estado_correo = :enviando AND correo_actualizado < :vencido))"
             ),
             ExpressionAttributeValues={
                 ":enviando": "enviando",
@@ -136,10 +164,7 @@ def handler(event, context):
             raise
 
         enviados += 1
-        try:
-            _marcar_correo(datos["id"], "enviado")
-        except ClientError as exc:
-            print(f"Plan {datos['id']}: correo enviado, pero no se pudo guardar el estado: {exc}")
+        _guardar_enviado(datos["id"], destinatario)
         print(f"Correo SES enviado a {destinatario} para el plan {datos['id']}")
 
     return {"statusCode": 200, "correos_enviados": enviados}
