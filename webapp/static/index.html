@@ -5,19 +5,35 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>NutriPerú — Recomendación Alimenticia</title>
   <link rel="stylesheet" href="/static/style.css"/>
+  <script src="/config.js"></script>
 </head>
 <body>
   <div class="hero">
     <div class="hero-logo">Nutri<span>Perú</span></div>
     <p class="hero-tagline">Tu plan alimenticio diario personalizado con ingredientes peruanos</p>
 
-    <div class="hero-form">
+    <div class="hero-form" id="formLocal" style="display:none">
       <input id="usernameInput" class="hero-input" type="text"
              placeholder="Escribe tu nombre de usuario"
              maxlength="30" autocomplete="off" autocapitalize="none"/>
       <button class="hero-btn" onclick="entrar()">Entrar →</button>
-      <p id="errorMsg" style="color:#FFD0D4;font-size:.82rem;margin-top:10px;min-height:18px;"></p>
     </div>
+
+    <div class="hero-form" id="formCognito" style="display:none">
+      <input id="emailInput" class="hero-input" type="email"
+             placeholder="Correo electrónico" autocomplete="email" autocapitalize="none"/>
+      <input id="passwordInput" class="hero-input" type="password"
+             placeholder="Contraseña" autocomplete="current-password"/>
+      <input id="codigoInput" class="hero-input" type="text" inputmode="numeric"
+             placeholder="Código que llegó a tu correo" autocomplete="one-time-code" style="display:none"/>
+      <button class="hero-btn" id="btnPrincipal" onclick="accionPrincipal()">Entrar →</button>
+      <p style="margin-top:14px;font-size:.85rem;">
+        <a href="#" id="linkModo" onclick="cambiarModo(); return false;" style="color:#fff;">¿No tienes cuenta? Regístrate</a>
+      </p>
+      <p style="font-size:.75rem;opacity:.8;margin-top:4px;" id="ayudaPassword"></p>
+    </div>
+
+    <p id="errorMsg" style="color:#FFD0D4;font-size:.82rem;margin-top:10px;min-height:18px;"></p>
 
     <div class="hero-features">
       <span class="feature-pill">🥗 81 ingredientes peruanos</span>
@@ -28,9 +44,29 @@
   </div>
 
   <script>
-    // Si ya hay username guardado, redirigir según tipo
+    const cfg = window.NUTRIPERU_CONFIG || {};
+    const modoLocal = !!cfg.modoLocal;
+    const err = document.getElementById('errorMsg');
+
     const saved = localStorage.getItem('np_username');
-    if (saved) window.location.href = saved === 'admin' ? '/admin' : '/plan';
+    if (saved && (modoLocal || localStorage.getItem('np_jwt'))) {
+      window.location.href = saved === 'admin' ? '/admin' : '/plan';
+    }
+
+    document.getElementById(modoLocal ? 'formLocal' : 'formCognito').style.display = 'block';
+
+    async function continuar(username) {
+      const res  = await fetch('/api/usuario/entrar', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({username})
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Error');
+
+      localStorage.setItem('np_username', data.username);
+      window.location.href = data.tiene_perfil ? '/plan' : '/perfil';
+    }
 
     document.getElementById('usernameInput').addEventListener('keydown', e => {
       if (e.key === 'Enter') entrar();
@@ -38,7 +74,6 @@
 
     async function entrar() {
       const input = document.getElementById('usernameInput');
-      const err   = document.getElementById('errorMsg');
       const username = input.value.trim().toLowerCase();
 
       if (username.length < 2) {
@@ -59,20 +94,109 @@
 
       err.textContent = '';
       try {
-        const res  = await fetch('/api/usuario/entrar', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({username})
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.detail || 'Error');
-
-        localStorage.setItem('np_username', data.username);
-        window.location.href = data.tiene_perfil ? '/plan' : '/perfil';
+        await continuar(username);
       } catch (e) {
         err.textContent = e.message;
       }
     }
+
+    let modo = 'entrar';
+
+    async function cognito(accion, cuerpo) {
+      const res = await fetch('https://cognito-idp.' + cfg.regionPrincipal + '.amazonaws.com/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-amz-json-1.1',
+          'X-Amz-Target': 'AWSCognitoIdentityProviderService.' + accion
+        },
+        body: JSON.stringify(Object.assign({ ClientId: cfg.cognitoClientId }, cuerpo))
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        const tipo = (data.__type || '').split('#').pop();
+        const mensajes = {
+          NotAuthorizedException: 'Correo o contraseña incorrectos.',
+          UserNotFoundException: 'Correo o contraseña incorrectos.',
+          UsernameExistsException: 'Ese correo ya tiene una cuenta. Inicia sesión.',
+          InvalidPasswordException: 'La contraseña debe tener al menos 8 caracteres, una mayúscula, una minúscula y un número.',
+          CodeMismatchException: 'El código no es correcto.',
+          ExpiredCodeException: 'El código venció. Vuelve a registrarte para recibir otro.',
+          UserNotConfirmedException: 'Tu cuenta aún no está confirmada. Escribe el código que llegó a tu correo.'
+        };
+        const e = new Error(mensajes[tipo] || data.message || 'No se pudo completar la operación.');
+        e.tipo = tipo;
+        throw e;
+      }
+      return data;
+    }
+
+    function pintarModo() {
+      const codigo = document.getElementById('codigoInput');
+      const btn    = document.getElementById('btnPrincipal');
+      const link   = document.getElementById('linkModo');
+      const ayuda  = document.getElementById('ayudaPassword');
+      codigo.style.display = modo === 'confirmar' ? 'block' : 'none';
+      btn.textContent  = { entrar: 'Entrar →', registro: 'Crear cuenta →', confirmar: 'Confirmar cuenta →' }[modo];
+      link.textContent = modo === 'entrar' ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Inicia sesión';
+      ayuda.textContent = modo === 'registro'
+        ? 'Mínimo 8 caracteres, con mayúscula, minúscula y número.' : '';
+    }
+
+    function cambiarModo() {
+      modo = modo === 'entrar' ? 'registro' : 'entrar';
+      err.textContent = '';
+      pintarModo();
+    }
+
+    async function iniciarSesion(email, password) {
+      const data = await cognito('InitiateAuth', {
+        AuthFlow: 'USER_PASSWORD_AUTH',
+        AuthParameters: { USERNAME: email, PASSWORD: password }
+      });
+      localStorage.setItem('np_jwt', data.AuthenticationResult.IdToken);
+      await continuar(email);
+    }
+
+    async function accionPrincipal() {
+      const email    = document.getElementById('emailInput').value.trim().toLowerCase();
+      const password = document.getElementById('passwordInput').value;
+      const codigo   = document.getElementById('codigoInput').value.trim();
+      err.textContent = '';
+
+      if (!email || !password) {
+        err.textContent = 'Escribe tu correo y tu contraseña.';
+        return;
+      }
+
+      try {
+        if (modo === 'registro') {
+          await cognito('SignUp', {
+            Username: email,
+            Password: password,
+            UserAttributes: [{ Name: 'email', Value: email }]
+          });
+          modo = 'confirmar';
+          pintarModo();
+          err.textContent = 'Te enviamos un código a tu correo.';
+        } else if (modo === 'confirmar') {
+          await cognito('ConfirmSignUp', { Username: email, ConfirmationCode: codigo });
+          await iniciarSesion(email, password);
+        } else {
+          await iniciarSesion(email, password);
+        }
+      } catch (e) {
+        if (e.tipo === 'UserNotConfirmedException') {
+          modo = 'confirmar';
+          pintarModo();
+        }
+        err.textContent = e.message;
+      }
+    }
+
+    document.getElementById('passwordInput').addEventListener('keydown', e => {
+      if (e.key === 'Enter') accionPrincipal();
+    });
+    pintarModo();
   </script>
 </body>
 </html>

@@ -360,3 +360,66 @@ def regenerar_plan(username: str, db: Session = Depends(get_db)):
         db.delete(plan_db)
         db.commit()
     return {"ok": True}
+
+
+# ── Worker en AWS Elastic Beanstalk (PuLP + K-Means + SQS + DynamoDB) ────────
+def _procesar_mensaje_sqs(mensaje: dict) -> dict:
+    """Ejecuta el motor real (Mifflin-St Jeor + SE + K-Means + PuLP) y guarda en DynamoDB."""
+    import os
+    import time
+    import boto3
+
+    plan_id = mensaje["id"]
+    datos = mensaje["datos"]
+
+    edad = int(datos.get("edad", 25))
+    sexo = str(datos.get("sexo", "M")).upper()
+    peso_kg = float(datos.get("peso", datos.get("peso_kg", 70)))
+    altura_cm = float(datos.get("talla", datos.get("altura_cm", 170)))
+    nivel_act = datos.get("actividad", datos.get("nivel_actividad", "ligero"))
+    objetivo = datos.get("objetivo", "mantener")
+    disponibles = datos.get("ingredientes")
+
+    perfil = PerfilUsuario(
+        edad=edad,
+        sexo=sexo,
+        peso_kg=peso_kg,
+        altura_cm=altura_cm,
+        nivel_actividad=nivel_act,
+        objetivo=objetivo,
+    )
+    resultado = generar_plan_completo(perfil, None, disponibles)
+    targets = resultado["targets_dia"]
+
+    tabla_nombre = os.getenv("TABLA_PLANES")
+    if tabla_nombre:
+        region = os.getenv("AWS_DEFAULT_REGION", os.getenv("AWS_REGION", "sa-east-1"))
+        tabla = boto3.resource("dynamodb", region_name=region).Table(tabla_nombre)
+        tabla.update_item(
+            Key={"id": plan_id},
+            UpdateExpression=(
+                "SET estado = :e, "
+                "tmb = :tmb, "
+                "calorias_objetivo = :cal, "
+                "motor_optimizador = :m, "
+                "kmeans = :km, "
+                "plan_generado = :pg, "
+                "actualizado = :act"
+            ),
+            ExpressionAttributeValues={
+                ":e": "generado",
+                ":tmb": str(targets["tmb"]),
+                ":cal": str(targets["calorias_objetivo"]),
+                ":m": resultado.get("motor_optimizador", "PuLP-MILP (CBC)"),
+                ":km": json.dumps(resultado.get("kmeans", {}), ensure_ascii=False),
+                ":pg": json.dumps(resultado, ensure_ascii=False),
+                ":act": int(time.time()),
+            },
+        )
+    return {"id": plan_id, "estado": "generado", "calorias_objetivo": targets["calorias_objetivo"]}
+
+
+@app.post("/worker/procesar")
+def endpoint_worker_beanstalk(payload: dict):
+    """Recibe mensajes de la cola SQS a través del demonio sqsd de Elastic Beanstalk."""
+    return _procesar_mensaje_sqs(payload)

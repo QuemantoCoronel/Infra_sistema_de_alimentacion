@@ -31,6 +31,7 @@ cells_export.txt
 
 # Terraform
 .terraform/
+.terraform.lock.hcl
 *.tfstate
 *.tfstate.*
 tfplan

@@ -1,7 +1,22 @@
-# API HTTP que recibe las solicitudes de la aplicación web
+locals {
+  cors_origen_principal = var.dominio != "" ? "https://${var.dominio}" : "https://${aws_cloudfront_distribution.web.domain_name}"
+  cors_origenes = compact([
+    "https://${aws_cloudfront_distribution.web.domain_name}",
+    var.dominio != "" ? "https://${var.dominio}" : "",
+  ])
+}
+
+# API HTTP que recibe las solicitudes de la aplicación web (CORS restringido a CloudFront y dominio propio)
 resource "aws_apigatewayv2_api" "http" {
   name          = "${local.nombre}-api"
   protocol_type = "HTTP"
+
+  cors_configuration {
+    allow_origins = local.cors_origenes
+    allow_methods = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    allow_headers = ["Content-Type", "Authorization"]
+    max_age       = 3600
+  }
 }
 
 resource "aws_apigatewayv2_stage" "default" {
@@ -24,9 +39,13 @@ resource "aws_apigatewayv2_authorizer" "cognito" {
 
 locals {
   rutas = {
-    salud        = { ruta = "GET /salud", protegida = false }
-    crear-plan   = { ruta = "POST /planes", protegida = true }
-    obtener-plan = { ruta = "GET /planes/{id}", protegida = true }
+    salud          = { ruta = "GET /salud", protegida = false }
+    crear-plan     = { ruta = "POST /planes", protegida = true }
+    obtener-plan   = { ruta = "GET /planes/{id}", protegida = true }
+    guardar-perfil = { ruta = "PUT /perfil", protegida = true }
+    obtener-perfil = { ruta = "GET /perfil", protegida = true }
+    historial      = { ruta = "GET /historial", protegida = true }
+    borrar-datos   = { ruta = "DELETE /datos", protegida = true }
   }
 }
 

@@ -1,9 +1,14 @@
-import json
+import os
+
+from comun import respuesta
 
 
 def handler(event, context):
-    return {
-        "statusCode": 200,
-        "headers": {"Content-Type": "application/json"},
-        "body": json.dumps({"estado": "ok", "servicio": "recomendacion-alimenticia"}),
-    }
+    return respuesta(
+        200,
+        {
+            "estado": "ok",
+            "servicio": "recomendacion-alimenticia",
+            "region": os.environ.get("AWS_REGION", "sa-east-1"),
+        },
+    )
