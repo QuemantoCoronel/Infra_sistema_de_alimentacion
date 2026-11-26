@@ -189,6 +189,11 @@ resource "aws_s3_object" "config_js" {
           return jsonResponse(202, creado);
         }
 
+        const mIngredientes = url.match(/^\/api\/usuario\/([^/]+)\/ingredientes$/);
+        if (mIngredientes) {
+          return jsonResponse(200, { personalizado: true, ingredientes: [] });
+        }
+
         // 4. DELETE /api/usuario/{u}/plan/hoy -> DELETE /datos en API Gateway
         const mBorrar = url.match(/^\/api\/usuario\/([^/]+)\/plan\/hoy$/);
         if (mBorrar && method === "DELETE") {

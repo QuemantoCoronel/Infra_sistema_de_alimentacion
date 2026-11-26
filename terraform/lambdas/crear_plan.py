@@ -2,6 +2,7 @@ import json
 import os
 import time
 import uuid
+from decimal import Decimal
 
 import boto3
 from comun import extraer_usuario, respuesta
@@ -10,6 +11,14 @@ dynamodb = boto3.resource("dynamodb")
 tabla_planes = dynamodb.Table(os.environ["TABLA_PLANES"])
 tabla_perfiles = dynamodb.Table(os.environ["TABLA_PERFILES"])
 sqs = boto3.client("sqs")
+
+
+def _sin_decimal(valor):
+    if isinstance(valor, Decimal):
+        return int(valor) if valor % 1 == 0 else float(valor)
+    if isinstance(valor, list):
+        return [_sin_decimal(v) for v in valor]
+    return valor
 
 
 def handler(event, context):
@@ -27,7 +36,7 @@ def handler(event, context):
         if perfil:
             for campo in ("peso", "talla", "edad", "sexo", "actividad", "objetivo", "ingredientes"):
                 if campo not in datos and campo in perfil:
-                    datos[campo] = perfil[campo]
+                    datos[campo] = _sin_decimal(perfil[campo])
             if not email and perfil.get("email"):
                 email = perfil["email"]
 
