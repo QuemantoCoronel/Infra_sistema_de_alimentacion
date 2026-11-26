@@ -45,6 +45,7 @@ resource "aws_lambda_function" "funcion" {
       TABLA_PLANES     = aws_dynamodb_table.planes.name
       TABLA_PERFILES   = aws_dynamodb_table.perfiles.name
       COLA_URL         = aws_sqs_queue.solicitudes.url
+      CORREOS_DLQ_URL  = aws_sqs_queue.correos_dlq.url
       CORREO_REMITENTE = var.correo_remitente
       SECRETO_ARN      = aws_secretsmanager_secret.app.arn
       CORS_ORIGIN      = local.cors_origen_principal

@@ -12,6 +12,7 @@ import boto3
 from botocore.exceptions import ClientError
 
 ses = boto3.client("ses")
+sqs = boto3.client("sqs")
 tabla_planes = boto3.resource("dynamodb").Table(os.environ["TABLA_PLANES"])
 
 
@@ -21,11 +22,65 @@ def _marcar_correo(plan_id, estado, detalle=""):
     if detalle:
         expresion += ", error_correo = :d"
         valores[":d"] = detalle[:500]
-    tabla_planes.update_item(
-        Key={"id": plan_id},
-        UpdateExpression=expresion,
-        ExpressionAttributeValues=valores,
+    try:
+        tabla_planes.update_item(
+            Key={"id": plan_id},
+            UpdateExpression=expresion,
+            ConditionExpression="attribute_exists(id)",
+            ExpressionAttributeValues=valores,
+        )
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] != "ConditionalCheckFailedException":
+            raise
+        print(f"Plan {plan_id}: ya no existe, no se guarda el estado del correo.")
+
+
+def _guardar_enviado(plan_id, destinatario):
+    for intento in range(INTENTOS_GUARDAR):
+        try:
+            _marcar_correo(plan_id, "enviado")
+            return
+        except ClientError as exc:
+            print(f"Plan {plan_id}: intento {intento + 1} de guardar 'enviado' fallo: {exc}")
+            if intento < INTENTOS_GUARDAR - 1:
+                time.sleep(2 ** intento)
+    sqs.send_message(
+        QueueUrl=os.environ["CORREOS_DLQ_URL"],
+        MessageBody=json.dumps({
+            "plan_id": plan_id,
+            "destinatario": destinatario,
+            "motivo": "Correo enviado, pero no se pudo guardar estado_correo = enviado",
+        }),
     )
+
+
+INTENTOS_GUARDAR = 3
+SEGUNDOS_RESERVA = 60
+
+
+def _tomar_envio(plan_id):
+    ahora = int(time.time())
+    try:
+        tabla_planes.update_item(
+            Key={"id": plan_id},
+            UpdateExpression="SET estado_correo = :enviando, correo_actualizado = :t",
+            ConditionExpression=(
+                "attribute_exists(id) AND (attribute_not_exists(estado_correo) "
+                "OR estado_correo = :error "
+                "OR (estado_correo = :enviando AND correo_actualizado < :vencido))"
+            ),
+            ExpressionAttributeValues={
+                ":enviando": "enviando",
+                ":error": "error",
+                ":t": ahora,
+                ":vencido": ahora - SEGUNDOS_RESERVA,
+            },
+        )
+        return True
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            return False
+        raise
 
 
 def _extraer_imagen_dynamodb(evento):
@@ -90,6 +145,10 @@ def handler(event, context):
             _marcar_correo(datos["id"], "omitido", "Sin remitente o destinatario")
             continue
 
+        if not _tomar_envio(datos["id"]):
+            print(f"Plan {datos['id']}: el correo ya fue enviado o se está enviando, no se repite.")
+            continue
+
         try:
             ses.send_email(
                 Source=remitente,
@@ -104,8 +163,8 @@ def handler(event, context):
             _marcar_correo(datos["id"], "error", str(exc))
             raise
 
-        _marcar_correo(datos["id"], "enviado")
         enviados += 1
+        _guardar_enviado(datos["id"], destinatario)
         print(f"Correo SES enviado a {destinatario} para el plan {datos['id']}")
 
     return {"statusCode": 200, "correos_enviados": enviados}
