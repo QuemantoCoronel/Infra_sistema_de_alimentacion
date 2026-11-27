@@ -20,6 +20,22 @@ resource "aws_backup_vault" "principal" {
   force_destroy = true
 }
 
+resource "aws_backup_vault" "secundaria" {
+  provider      = aws.secundaria
+  name          = "${local.nombre}-backup-vault-secundaria"
+  force_destroy = true
+}
+
+resource "aws_backup_region_settings" "principal" {
+  resource_type_opt_in_preference = {
+    "DynamoDB" = true
+  }
+
+  resource_type_management_preference = {
+    "DynamoDB" = true
+  }
+}
+
 resource "aws_backup_plan" "dynamodb" {
   name = "${local.nombre}-backup-plan"
 
@@ -31,7 +47,17 @@ resource "aws_backup_plan" "dynamodb" {
     lifecycle {
       delete_after = 7
     }
+
+    copy_action {
+      destination_vault_arn = aws_backup_vault.secundaria.arn
+
+      lifecycle {
+        delete_after = 7
+      }
+    }
   }
+
+  depends_on = [aws_backup_region_settings.principal]
 }
 
 data "aws_iam_policy_document" "backup_assume" {

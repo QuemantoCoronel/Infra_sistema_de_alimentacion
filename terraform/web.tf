@@ -35,7 +35,6 @@ locals {
     "perfil.html"       = "text/html; charset=utf-8"
     "ingredientes.html" = "text/html; charset=utf-8"
     "plan.html"         = "text/html; charset=utf-8"
-    "admin.html"        = "text/html; charset=utf-8"
     "style.css"         = "text/css; charset=utf-8"
   }
 }
@@ -48,6 +47,21 @@ resource "aws_s3_object" "web" {
   source       = "${path.module}/../webapp/static/${each.key}"
   content_type = each.value
   etag         = filemd5("${path.module}/../webapp/static/${each.key}")
+}
+
+locals {
+  ingredientes_csv = csvdecode(file("${path.module}/../data/ingredientes_dataset.csv"))
+  ingredientes_por_categoria = {
+    for categoria in distinct([for i in local.ingredientes_csv : i.categoria]) :
+    categoria => [for i in local.ingredientes_csv : { nombre = i.nombre, categoria = i.categoria } if i.categoria == categoria]
+  }
+}
+
+resource "aws_s3_object" "ingredientes_json" {
+  bucket       = aws_s3_bucket.web.id
+  key          = "ingredientes.json"
+  content_type = "application/json; charset=utf-8"
+  content      = jsonencode(local.ingredientes_por_categoria)
 }
 
 # Cliente JS inyectado dinámicamente que conecta las páginas HTML con las rutas de API Gateway
@@ -94,6 +108,16 @@ resource "aws_s3_object" "config_js" {
         return res;
       }
 
+      async function leerPerfil() {
+        const res = await apiFetch(apiBase + "/perfil", { method: "GET", headers: authHeaders() });
+        return res.ok ? res.json() : null;
+      }
+
+      async function nombresCatalogo() {
+        const catalogo = await (await origFetch("/ingredientes.json")).json();
+        return Object.values(catalogo).flat().map(i => i.nombre);
+      }
+
       window.fetch = async function(input, init) {
         const url = typeof input === "string" ? input : input.url;
         const method = ((init && init.method) || "GET").toUpperCase();
@@ -136,6 +160,8 @@ resource "aws_s3_object" "config_js" {
           }
           if (method === "POST" || method === "PUT") {
             const b = JSON.parse((init && init.body) || "{}");
+            const actual = await leerPerfil();
+            localStorage.setItem("np_regenerar", "1");
             const res = await apiFetch(apiBase + "/perfil", {
               method: "PUT",
               headers: authHeaders(),
@@ -146,7 +172,8 @@ resource "aws_s3_object" "config_js" {
                 peso: b.peso_kg || b.peso,
                 talla: b.altura_cm || b.talla,
                 actividad: b.nivel_actividad || b.actividad,
-                objetivo: b.objetivo
+                objetivo: b.objetivo,
+                ingredientes: (actual && actual.ingredientes) || []
               })
             });
             return res;
@@ -157,7 +184,8 @@ resource "aws_s3_object" "config_js" {
         const mPlan = url.match(/^\/api\/usuario\/([^/]+)\/plan$/);
         if (mPlan && method === "GET") {
           const username = decodeURIComponent(mPlan[1]);
-          const resHist = await apiFetch(apiBase + "/historial?usuario_id=" + encodeURIComponent(username), {
+          const regenerar = localStorage.getItem("np_regenerar") === "1";
+          const resHist = regenerar ? { ok: false } : await apiFetch(apiBase + "/historial?usuario_id=" + encodeURIComponent(username), {
             method: "GET",
             headers: authHeaders()
           });
@@ -173,6 +201,7 @@ resource "aws_s3_object" "config_js" {
           });
           const creado = await resCrear.json();
           if (!resCrear.ok) return jsonResponse(resCrear.status, creado);
+          localStorage.removeItem("np_regenerar");
           for (let i = 0; i < 15; i++) {
             await new Promise(r => setTimeout(r, 2000));
             const resPoll = await apiFetch(apiBase + "/planes/" + encodeURIComponent(creado.id), {
@@ -189,9 +218,44 @@ resource "aws_s3_object" "config_js" {
           return jsonResponse(202, creado);
         }
 
+        if (url === "/api/ingredientes" && method === "GET") {
+          return origFetch("/ingredientes.json");
+        }
+
         const mIngredientes = url.match(/^\/api\/usuario\/([^/]+)\/ingredientes$/);
         if (mIngredientes) {
-          return jsonResponse(200, { personalizado: true, ingredientes: [] });
+          const username = decodeURIComponent(mIngredientes[1]);
+          const todos = await nombresCatalogo();
+          const actual = await leerPerfil();
+          if (method === "GET") {
+            const propios = (actual && actual.ingredientes) || [];
+            if (propios.length) {
+              return jsonResponse(200, { ingredientes: propios, personalizado: true });
+            }
+            return jsonResponse(200, { ingredientes: todos, personalizado: false });
+          }
+          if (!actual) {
+            return jsonResponse(400, { detail: "Primero guarda tu perfil" });
+          }
+          const b = JSON.parse((init && init.body) || "{}");
+          const seleccion = (b.ingredientes || []).filter(n => todos.includes(n));
+          const res = await apiFetch(apiBase + "/perfil", {
+            method: "PUT",
+            headers: authHeaders(),
+            body: JSON.stringify({
+              usuario_id: username,
+              edad: actual.edad,
+              sexo: actual.sexo,
+              peso: actual.peso,
+              talla: actual.talla,
+              actividad: actual.actividad,
+              objetivo: actual.objetivo,
+              ingredientes: seleccion.length === todos.length ? [] : seleccion
+            })
+          });
+          if (!res.ok) return res;
+          localStorage.setItem("np_regenerar", "1");
+          return jsonResponse(200, { ok: true, total_seleccionados: seleccion.length });
         }
 
         // 4. DELETE /api/usuario/{u}/plan/hoy -> DELETE /datos en API Gateway
@@ -222,7 +286,7 @@ resource "aws_cloudfront_function" "rutas_limpias" {
       var uri = request.uri;
       if (uri.startsWith('/static/')) {
         request.uri = uri.replace('/static/', '/');
-      } else if (uri === '/perfil' || uri === '/plan' || uri === '/ingredientes' || uri === '/admin') {
+      } else if (uri === '/perfil' || uri === '/plan' || uri === '/ingredientes') {
         request.uri = uri + '.html';
       } else if (uri.endsWith('/')) {
         request.uri += 'index.html';
